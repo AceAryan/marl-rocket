@@ -86,5 +86,3 @@ python utils/plot_results.py --dir checkpoints --save
 | 2 | Communication delay | 0 / 1 / 2 / 5 steps |
 | 3 | Partial observability | obs_frac = 1.0 / 0.75 / 0.5 / 0.25 |
 | 4 | Team size | n_agents = 2 / 3 / 4 |
-
----

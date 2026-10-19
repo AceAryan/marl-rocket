@@ -1,54 +1,28 @@
-"""
-DQN Agent with optional communication head.
-Supports both action selection and message generation.
-"""
+"""Independent DQN agent with separate action and communication heads."""
 
-import numpy as np
-import random
-from collections import deque
 import json
 import os
+import random
+from collections import deque
+
+import numpy as np
+import torch
+from torch import nn
 
 
-# ---------------------------------------------------------------------------
-# Tiny neural net in pure numpy (no PyTorch dependency for portability)
-# ---------------------------------------------------------------------------
-
-def relu(x):
-    return np.maximum(0, x)
-
-
-class MLP:
-    """2-hidden-layer MLP."""
-
-    def __init__(self, in_dim, hidden, out_dim, seed=0):
-        rng = np.random.default_rng(seed)
-        scale = lambda i, o: np.sqrt(2.0 / i)
-        self.W1 = rng.normal(0, scale(in_dim, hidden), (hidden, in_dim)).astype(np.float32)
-        self.b1 = np.zeros(hidden, dtype=np.float32)
-        self.W2 = rng.normal(0, scale(hidden, hidden), (hidden, hidden)).astype(np.float32)
-        self.b2 = np.zeros(hidden, dtype=np.float32)
-        self.W3 = rng.normal(0, scale(hidden, out_dim), (out_dim, hidden)).astype(np.float32)
-        self.b3 = np.zeros(out_dim, dtype=np.float32)
+class QNetwork(nn.Module):
+    def __init__(self, in_dim, hidden, out_dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, out_dim),
+        )
 
     def forward(self, x):
-        h1 = relu(self.W1 @ x + self.b1)
-        h2 = relu(self.W2 @ h1 + self.b2)
-        return self.W3 @ h2 + self.b3
-
-    def copy_from(self, other):
-        self.W1 = other.W1.copy()
-        self.b1 = other.b1.copy()
-        self.W2 = other.W2.copy()
-        self.b2 = other.b2.copy()
-        self.W3 = other.W3.copy()
-        self.b3 = other.b3.copy()
-
-    def params(self):
-        return [self.W1, self.b1, self.W2, self.b2, self.W3, self.b3]
-
-    def grads_zero(self):
-        return [np.zeros_like(p) for p in self.params()]
+        return self.net(x)
 
 
 class ReplayBuffer:
@@ -58,8 +32,11 @@ class ReplayBuffer:
     def push(self, *transition):
         self.buf.append(transition)
 
-    def sample(self, batch_size):
-        batch = random.sample(self.buf, batch_size)
+    def sample(self, batch_size, replacement=False):
+        if replacement:
+            batch = random.choices(self.buf, k=batch_size)
+        else:
+            batch = random.sample(self.buf, batch_size)
         return list(zip(*batch))
 
     def __len__(self):
@@ -67,12 +44,7 @@ class ReplayBuffer:
 
 
 class DQNAgent:
-    """
-    Independent DQN agent with:
-    - epsilon-greedy exploration
-    - target network (hard update every C steps)
-    - optional message head (separate Q-values for message tokens)
-    """
+    """Independent DQN with target networks and separate message replay."""
 
     def __init__(
         self,
@@ -94,128 +66,172 @@ class DQNAgent:
         self.n_actions = n_actions
         self.n_messages = n_messages
         self.gamma = gamma
-        self.lr = lr
         self.eps = eps_start
         self.eps_end = eps_end
         self.eps_decay = eps_decay
         self.batch_size = batch_size
         self.target_update = target_update
         self.agent_id = agent_id
-
+        self.device = torch.device("cpu")
         self.steps = 0
+        self.msg_steps = 0
 
-        # Action network + target
-        self.q_net = MLP(obs_dim, hidden, n_actions, seed=agent_id)
-        self.q_target = MLP(obs_dim, hidden, n_actions, seed=agent_id + 100)
-        self.q_target.copy_from(self.q_net)
+        self.q_net = QNetwork(obs_dim, hidden, n_actions).to(self.device)
+        self.q_target = QNetwork(obs_dim, hidden, n_actions).to(self.device)
+        self.q_target.load_state_dict(self.q_net.state_dict())
+        self.q_target.eval()
+        self.q_optimizer = torch.optim.Adam(self.q_net.parameters(), lr=lr)
 
-        # Message network (same architecture, different output head)
-        self.msg_net = MLP(obs_dim, hidden // 2, n_messages, seed=agent_id + 200)
+        msg_hidden = max(1, hidden // 2)
+        self.msg_net = QNetwork(obs_dim, msg_hidden, n_messages).to(self.device)
+        self.msg_target = QNetwork(obs_dim, msg_hidden, n_messages).to(self.device)
+        self.msg_target.load_state_dict(self.msg_net.state_dict())
+        self.msg_target.eval()
+        self.msg_optimizer = torch.optim.Adam(self.msg_net.parameters(), lr=lr)
 
         self.buffer = ReplayBuffer(buffer_size)
-
-        # Simple SGD accumulators (we use a manual update since no autograd)
+        self.goal_buffer = ReplayBuffer(5_000)
+        self.msg_buffer = ReplayBuffer(buffer_size)
         self._loss_history = []
 
-    # ------------------------------------------------------------------
+    def _q_values(self, net, obs):
+        with torch.no_grad():
+            obs_tensor = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+            return net(obs_tensor).cpu().numpy()
 
     def select_action(self, obs: np.ndarray) -> int:
         if random.random() < self.eps:
             return random.randrange(self.n_actions)
-        q = self.q_net.forward(obs)
-        return int(np.argmax(q))
+        return int(np.argmax(self._q_values(self.q_net, obs)))
 
     def select_message(self, obs: np.ndarray, budget_exhausted: bool = False) -> int:
         if budget_exhausted:
-            return 0  # silence
+            return 0
         if random.random() < self.eps:
             return random.randrange(self.n_messages)
-        q = self.msg_net.forward(obs)
-        return int(np.argmax(q))
+        return int(np.argmax(self._q_values(self.msg_net, obs)))
 
     def decay_epsilon(self):
         self.eps = max(
             self.eps_end,
-            self.eps - (1.0 - self.eps_end) / self.eps_decay
+            self.eps - (1.0 - self.eps_end) / self.eps_decay,
         )
 
-    def store(self, obs, action, reward, next_obs, done):
+    def store(self, obs, action, reward, next_obs, done, goal_transition=False):
         self.buffer.push(obs, action, reward, next_obs, done)
+        if goal_transition:
+            self.goal_buffer.push(obs, action, reward, next_obs, done)
 
-    def update(self):
-        if len(self.buffer) < self.batch_size:
+    def store_message(self, obs, message, reward, next_obs, done):
+        self.msg_buffer.push(obs, message, reward, next_obs, done)
+
+    def _update_network(
+        self,
+        buffer,
+        network,
+        target_network,
+        optimizer,
+        step,
+        goal_buffer=None,
+    ):
+        if len(buffer) < self.batch_size:
             return None
 
+        if goal_buffer is not None and len(goal_buffer) >= 8:
+            n_goal = self.batch_size // 4
+            n_main = self.batch_size - n_goal
+            main_batch = buffer.sample(n_main)
+            goal_batch = goal_buffer.sample(n_goal, replacement=True)
+            batch = [
+                list(main_values) + list(goal_values)
+                for main_values, goal_values in zip(main_batch, goal_batch)
+            ]
+            obs_b, act_b, rew_b, nobs_b, done_b = batch
+        else:
+            obs_b, act_b, rew_b, nobs_b, done_b = buffer.sample(self.batch_size)
+        obs_t = torch.as_tensor(np.asarray(obs_b), dtype=torch.float32, device=self.device)
+        act_t = torch.as_tensor(act_b, dtype=torch.int64, device=self.device)
+        rew_t = torch.as_tensor(rew_b, dtype=torch.float32, device=self.device)
+        nobs_t = torch.as_tensor(np.asarray(nobs_b), dtype=torch.float32, device=self.device)
+        done_t = torch.as_tensor(done_b, dtype=torch.float32, device=self.device)
+
+        q_selected = network(obs_t).gather(1, act_t.unsqueeze(1)).squeeze(1)
+        with torch.no_grad():
+            next_q = target_network(nobs_t).max(dim=1).values
+            target = rew_t + self.gamma * next_q * (1.0 - done_t)
+
+        loss = nn.functional.smooth_l1_loss(q_selected, target)
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        nn.utils.clip_grad_norm_(network.parameters(), max_norm=10.0)
+        optimizer.step()
+
+        if step % self.target_update == 0:
+            target_network.load_state_dict(network.state_dict())
+        return float(loss.item())
+
+    def update(self):
         self.steps += 1
-
-        obs_b, act_b, rew_b, nobs_b, done_b = self.buffer.sample(self.batch_size)
-        obs_b   = np.array(obs_b,   dtype=np.float32)
-        act_b   = np.array(act_b,   dtype=np.int32)
-        rew_b   = np.array(rew_b,   dtype=np.float32)
-        nobs_b  = np.array(nobs_b,  dtype=np.float32)
-        done_b  = np.array(done_b,  dtype=np.float32)
-
-        # Compute targets
-        targets = rew_b.copy()
-        for i in range(self.batch_size):
-            if not done_b[i]:
-                targets[i] += self.gamma * np.max(self.q_target.forward(nobs_b[i]))
-
-        # Manual SGD update for Q-net (simple finite-diff / direct update trick)
-        loss = self._sgd_step(self.q_net, obs_b, act_b, targets)
-        self._loss_history.append(loss)
-
-        # Target network hard update
-        if self.steps % self.target_update == 0:
-            self.q_target.copy_from(self.q_net)
-
-        self.decay_epsilon()
+        loss = self._update_network(
+            self.buffer,
+            self.q_net,
+            self.q_target,
+            self.q_optimizer,
+            self.steps,
+            goal_buffer=self.goal_buffer,
+        )
+        if loss is not None:
+            self._loss_history.append(loss)
+            self.decay_epsilon()
         return loss
 
-    def _sgd_step(self, net, obs_b, act_b, targets):
-        """
-        Minimal SGD step using finite differences on the output layer only
-        (a simplified approximation sufficient for course-level experiments).
-        Replace with PyTorch for production use.
-        """
-        total_loss = 0.0
-        lr = self.lr / self.batch_size
-
-        for i in range(self.batch_size):
-            q = net.forward(obs_b[i])
-            a = act_b[i]
-            td_err = q[a] - targets[i]
-            total_loss += td_err ** 2
-
-            # Backprop through last layer only (simplified)
-            # dL/dq[a] = 2 * td_err
-            grad_out = np.zeros_like(q)
-            grad_out[a] = 2.0 * td_err
-
-            # Last layer update: W3, b3
-            h2 = relu(net.W2 @ relu(net.W1 @ obs_b[i] + net.b1) + net.b2)
-            net.W3 -= lr * np.outer(grad_out, h2)
-            net.b3 -= lr * grad_out
-
-        return total_loss / self.batch_size
+    def update_message_head(self):
+        self.msg_steps += 1
+        return self._update_network(
+            self.msg_buffer,
+            self.msg_net,
+            self.msg_target,
+            self.msg_optimizer,
+            self.msg_steps,
+        )
 
     def save(self, path: str):
         os.makedirs(path, exist_ok=True)
-        for name, net in [("q", self.q_net), ("msg", self.msg_net)]:
-            np.savez(
-                os.path.join(path, f"agent{self.agent_id}_{name}.npz"),
-                W1=net.W1, b1=net.b1,
-                W2=net.W2, b2=net.b2,
-                W3=net.W3, b3=net.b3,
-            )
-        meta = {"eps": float(self.eps), "steps": int(self.steps), "loss_history": [float(x) for x in self._loss_history[-1000:]]}
+        for name, net in (("q", self.q_net), ("msg", self.msg_net)):
+            torch.save(net.state_dict(), os.path.join(path, f"agent{self.agent_id}_{name}.pt"))
+        meta = {
+            "eps": float(self.eps),
+            "steps": int(self.steps),
+            "msg_steps": int(self.msg_steps),
+            "loss_history": self._loss_history[-1000:],
+        }
         with open(os.path.join(path, f"agent{self.agent_id}_meta.json"), "w") as f:
             json.dump(meta, f)
 
     def load(self, path: str):
-        for name, net in [("q", self.q_net), ("msg", self.msg_net)]:
-            d = np.load(os.path.join(path, f"agent{self.agent_id}_{name}.npz"))
-            net.W1, net.b1 = d["W1"], d["b1"]
-            net.W2, net.b2 = d["W2"], d["b2"]
-            net.W3, net.b3 = d["W3"], d["b3"]
-        self.q_target.copy_from(self.q_net)
+        for name, net in (("q", self.q_net), ("msg", self.msg_net)):
+            torch_path = os.path.join(path, f"agent{self.agent_id}_{name}.pt")
+            legacy_path = os.path.join(path, f"agent{self.agent_id}_{name}.npz")
+            if os.path.exists(torch_path):
+                state = torch.load(
+                    torch_path,
+                    map_location=self.device,
+                    weights_only=True,
+                )
+                net.load_state_dict(state)
+            elif os.path.exists(legacy_path):
+                with np.load(legacy_path) as legacy:
+                    layers = (net.net[0], net.net[2], net.net[4])
+                    for layer, prefix in zip(layers, ("W1", "W2", "W3")):
+                        layer.weight.data.copy_(
+                            torch.as_tensor(legacy[prefix].T, dtype=torch.float32)
+                        )
+                        layer.bias.data.copy_(
+                            torch.as_tensor(legacy["b" + prefix[1]], dtype=torch.float32)
+                        )
+            else:
+                raise FileNotFoundError(
+                    f"No {name} network checkpoint found in {path}"
+                )
+        self.q_target.load_state_dict(self.q_net.state_dict())
+        self.msg_target.load_state_dict(self.msg_net.state_dict())

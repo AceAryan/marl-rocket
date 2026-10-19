@@ -9,67 +9,109 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import argparse
-import json
 import numpy as np
 from experiments.train import train, COMM_SETTINGS
 
-
-def smooth(x, w=20):
-    kernel = np.ones(w) / w
-    return np.convolve(x, kernel, mode='valid')
+DEFAULT_SEEDS = (42, 123, 7, 99, 17)
 
 
-def run_all(episodes: int = 1000, obs_frac: float = 1.0, seed: int = 42):
+def run_budget_sweep(
+    episodes: int,
+    obs_frac: float = 1.0,
+    seeds=DEFAULT_SEEDS,
+    max_steps: int = 200,
+    eval_max_steps: int = 500,
+    save_dir: str = "checkpoints",
+    eval_every: int = 100,
+    n_eval_episodes: int = 20,
+):
+    seeds = tuple(seeds)
+    if not seeds:
+        raise ValueError("At least one random seed is required")
     results = {}
     for setting in COMM_SETTINGS:
-        print(f"\n{'='*50}")
-        print(f"  RUNNING SETTING {setting}")
-        print(f"{'='*50}")
-        h = train(
-            setting=setting,
-            n_episodes=episodes,
-            obs_frac=obs_frac,
-            seed=seed,
-        )
-        results[setting] = h
+        results[setting] = []
+        for seed in seeds:
+            print(f"\n{'='*50}")
+            print(f"  RUNNING SETTING {setting} (obs_frac={obs_frac}, seed={seed})")
+            print(f"{'='*50}")
+            h = train(
+                setting=setting,
+                n_episodes=episodes,
+                obs_frac=obs_frac,
+                seed=seed,
+                max_steps=max_steps,
+                eval_max_steps=eval_max_steps,
+                save_dir=os.path.join(save_dir, f"seed_{seed}"),
+                eval_every=eval_every,
+                n_eval_episodes=n_eval_episodes,
+            )
+            results[setting].append(h)
 
-    # --- Print summary table ---
-    print("\n\n=== RESULTS SUMMARY ===")
-    print(f"{'Setting':<10} {'Avg Reward':>12} {'Team Goals':>12} {'Opp Goals':>12} {'Msgs/Ep':>10}")
-    print("-" * 58)
-    for s, h in results.items():
-        tail = slice(-min(200, episodes), None)
-        r  = np.mean(h["episode_reward"][tail])
-        g  = np.mean(h["score_team"][tail])
-        ag = np.mean(h["score_opp"][tail])
-        m  = np.mean(h["msgs_sent"][tail])
-        desc = {
-            "A": "No comm",
-            "B": "Every step",
-            "C": "Every 5 steps",
-            "D": "Budget=20",
-        }[s]
-        print(f"{s} ({desc:<13}) | {r:>10.1f} | {g:>10.2f} | {ag:>10.2f} | {m:>8.1f}")
-
-    # Try to save a simple ASCII plot
-    print("\n\n=== SMOOTHED REWARD CURVES (terminal) ===")
-    colors = {"A": "●", "B": "■", "C": "▲", "D": "★"}
-    for s, h in results.items():
-        curve = smooth(h["episode_reward"], w=max(1, episodes // 50))
-        max_r = max(abs(v) for v in curve) + 1e-8
-        bar = "".join(
-            colors[s] if v > 0 else "·"
-            for v in curve[::max(1, len(curve)//60)]
+    print(f"\n\n=== RESULTS SUMMARY (obs_frac={obs_frac}) ===")
+    print(f"{'Setting':<10} {'Eval Reward':>19} {'Team Goals':>19} {'Opp Goals':>19}")
+    print("-" * 72)
+    for setting, histories in results.items():
+        rewards = [h["eval_reward_mean"][-1] for h in histories]
+        team_goals = [h["eval_score_team_mean"][-1] for h in histories]
+        opponent_goals = [h["eval_score_opp_mean"][-1] for h in histories]
+        comm_cfg = COMM_SETTINGS[setting]
+        if comm_cfg["comm_every"] > 1:
+            desc = f"every {comm_cfg['comm_every']} steps"
+        elif comm_cfg["comm_budget"] is None:
+            desc = "unlimited"
+        else:
+            desc = f"budget={comm_cfg['comm_budget']}"
+        print(
+            f"{setting} ({desc:<13}) | "
+            f"{np.mean(rewards):>8.2f} +/- {np.std(rewards):<7.2f} | "
+            f"{np.mean(team_goals):>8.3f} +/- {np.std(team_goals):<7.3f} | "
+            f"{np.mean(opponent_goals):>8.3f} +/- {np.std(opponent_goals):<7.3f}"
         )
-        print(f"  {s}: {bar}")
 
     return results
+
+
+def run_all(
+    episodes: int = 1000,
+    seeds=DEFAULT_SEEDS,
+    max_steps: int = 200,
+    eval_max_steps: int = 500,
+    save_dir: str = "checkpoints",
+    eval_every: int = 100,
+    n_eval_episodes: int = 20,
+):
+    return {
+        obs_frac: run_budget_sweep(
+            episodes,
+            obs_frac=obs_frac,
+            seeds=seeds,
+            max_steps=max_steps,
+            eval_max_steps=eval_max_steps,
+            save_dir=save_dir,
+            eval_every=eval_every,
+            n_eval_episodes=n_eval_episodes,
+        )
+        for obs_frac in (1.0, 0.25)
+    }
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int,   default=1000)
-    parser.add_argument("--obs_frac", type=float, default=1.0)
-    parser.add_argument("--seed",     type=int,   default=42)
+    parser.add_argument("--seeds", type=int, nargs="+", default=list(DEFAULT_SEEDS))
+    parser.add_argument("--max_steps", type=int,  default=200)
+    parser.add_argument("--eval_max_steps", type=int, default=500)
+    parser.add_argument("--save_dir", default="checkpoints")
+    parser.add_argument("--eval_every", type=int, default=100)
+    parser.add_argument("--n_eval_episodes", type=int, default=20)
     args = parser.parse_args()
-    run_all(episodes=args.episodes, obs_frac=args.obs_frac, seed=args.seed)
+    run_all(
+        episodes=args.episodes,
+        seeds=args.seeds,
+        max_steps=args.max_steps,
+        eval_max_steps=args.eval_max_steps,
+        save_dir=args.save_dir,
+        eval_every=args.eval_every,
+        n_eval_episodes=args.n_eval_episodes,
+    )

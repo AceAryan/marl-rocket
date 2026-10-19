@@ -16,6 +16,8 @@ AGENT_RADIUS = 0.5
 BALL_RADIUS = 0.4
 MAX_SPEED = 0.8
 BALL_FRICTION = 0.95
+SHAPING_GAMMA = 0.99
+SHAPING_SCALE = 0.01
 
 # Actions: 0=noop, 1=up, 2=down, 3=left, 4=right, 5=boost
 N_ACTIONS = 6
@@ -40,7 +42,8 @@ class RocketEnv(gym.Env):
         [self_x, self_y, teammate_x, teammate_y,
          ball_x, ball_y, ball_vx, ball_vy,
          opp_x, opp_y,
-         last_message_received (one-hot, N_MESSAGES)]
+         last_message_received (one-hot, N_MESSAGES),
+         remaining communication budget fraction]
 
     Action: integer in [0, N_ACTIONS)
 
@@ -61,22 +64,31 @@ class RocketEnv(gym.Env):
         comm_delay: int = 0,
         comm_every: int = 1,
         max_steps: int = 500,
+        curriculum: str = "full",
         render_mode: Optional[str] = None,
     ):
         super().__init__()
+        if curriculum not in ("easy", "full"):
+            raise ValueError("curriculum must be 'easy' or 'full'")
         self.n_agents = n_agents
         self.obs_frac = obs_frac          # partial observability [0,1]
         self.comm_budget = comm_budget    # None=unlimited, 0=none, N=N msgs/ep
         self.comm_delay = comm_delay      # steps before msg arrives
         self.comm_every = comm_every      # send every K steps
         self.max_steps = max_steps
+        self.curriculum = curriculum
+        self.goal_width = 10.0 if curriculum == "easy" else GOAL_W
         self.render_mode = render_mode
 
         # Observation size per agent
-        self._obs_size = 10 + N_MESSAGES  # positions + ball + opp + last_msg
+        self._obs_size = 10 + N_MESSAGES + 1  # positions + ball + opp + message + budget
 
+        obs_low = np.full(self._obs_size, -1.0, dtype=np.float32)
+        obs_high = np.full(self._obs_size, 1.0, dtype=np.float32)
+        obs_low[6:8] = -1.5
+        obs_high[6:8] = 1.5
         self.observation_space = spaces.Box(
-            low=-1.0, high=1.0, shape=(self._obs_size,), dtype=np.float32
+            low=obs_low, high=obs_high, dtype=np.float32
         )
         self.action_space = spaces.Discrete(N_ACTIONS)
         # Message action space (separate)
@@ -101,6 +113,7 @@ class RocketEnv(gym.Env):
         messages : list of int (message tokens), length n_agents, or None
         """
         self._step_count += 1
+        prev_ball_pos = self._ball_pos.copy()
 
         # --- Move agents ---
         for i, a in enumerate(actions):
@@ -142,11 +155,19 @@ class RocketEnv(gym.Env):
 
         # --- Rewards & termination ---
         reward, terminated = self._compute_reward()
-
         truncated = self._step_count >= self.max_steps
+        next_potential = 0.0 if terminated or truncated else self._potential(self._ball_pos)
+        shaping_reward = SHAPING_SCALE * (
+            SHAPING_GAMMA * next_potential - self._potential(prev_ball_pos)
+        )
+        task_reward = reward
+        reward += shaping_reward
+
         obs = self._get_obs()
         info = self._get_info()
         info["step"] = self._step_count
+        info["task_reward"] = task_reward
+        info["shaping_reward"] = shaping_reward
 
         return obs, reward, terminated, truncated, info
 
@@ -167,7 +188,8 @@ class RocketEnv(gym.Env):
         ], dtype=np.float32)
 
         # Ball
-        self._ball_pos = np.array([FIELD_W / 2, FIELD_H / 2], dtype=np.float32)
+        ball_y = FIELD_H * (0.75 if self.curriculum == "easy" else 0.5)
+        self._ball_pos = np.array([FIELD_W / 2, ball_y], dtype=np.float32)
         angle = self.np_random.uniform(0, 2 * np.pi) if hasattr(self, 'np_random') else 0.0
         self._ball_vel = np.array([np.cos(angle), np.sin(angle)], dtype=np.float32) * 0.3
 
@@ -181,6 +203,8 @@ class RocketEnv(gym.Env):
 
     def _move_opponent(self):
         """Simple rule-based opponent: chase ball when it's in upper half."""
+        if self.curriculum == "easy":
+            return
         target = self._ball_pos.copy()
         direction = target - self._opp_pos
         dist = np.linalg.norm(direction)
@@ -232,8 +256,8 @@ class RocketEnv(gym.Env):
         terminated = False
 
         bx, by = self._ball_pos
-        goal_lo = (FIELD_W - GOAL_W) / 2
-        goal_hi = (FIELD_W + GOAL_W) / 2
+        goal_lo = (FIELD_W - self.goal_width) / 2
+        goal_hi = (FIELD_W + self.goal_width) / 2
 
         # Team scores (ball enters opponent goal at top)
         if by >= FIELD_H - BALL_RADIUS and goal_lo <= bx <= goal_hi:
@@ -247,9 +271,6 @@ class RocketEnv(gym.Env):
             self._score_opp += 1
             terminated = True
 
-        # Shaping: ball moving toward opponent goal
-        reward += self._ball_vel[1] * 0.5
-
         # Possession: agent near ball
         for i in range(self.n_agents):
             d = np.linalg.norm(self._ball_pos - self._agent_pos[i])
@@ -257,6 +278,11 @@ class RocketEnv(gym.Env):
                 reward += 0.1
 
         return reward, terminated
+
+    @staticmethod
+    def _potential(ball_pos):
+        opponent_goal = np.array([FIELD_W / 2, FIELD_H], dtype=np.float32)
+        return -float(np.linalg.norm(ball_pos - opponent_goal))
 
     def _get_obs(self):
         """Return list of per-agent observations (with partial obs mask)."""
@@ -272,17 +298,33 @@ class RocketEnv(gym.Env):
 
             # Partial observability: zero out far objects
             if self.obs_frac < 1.0:
-                for k in range(1, 5):  # teammate, ball, opp
-                    obj_pos = raw[k*2: k*2+2] * [FIELD_W, FIELD_H]
+                visible_objects = (
+                    (slice(2, 4), None),  # teammate
+                    (slice(4, 6), slice(6, 8)),  # ball and its velocity
+                    (slice(8, 10), None),  # opponent
+                )
+                for pos_slice, related_slice in visible_objects:
+                    obj_pos = raw[pos_slice] * [FIELD_W, FIELD_H]
                     dist = np.linalg.norm(obj_pos - self._agent_pos[i])
                     if dist > FIELD_H * self.obs_frac:
-                        raw[k*2: k*2+2] = 0.0
+                        raw[pos_slice] = 0.0
+                        if related_slice is not None:
+                            raw[related_slice] = 0.0
 
             # One-hot message
             msg_onehot = np.zeros(N_MESSAGES, dtype=np.float32)
             msg_onehot[self._msg_received[i]] = 1.0
 
-            obs_list.append(np.concatenate([raw, msg_onehot]))
+            if self.comm_budget is None:
+                budget_remaining = np.array([1.0], dtype=np.float32)
+            else:
+                used = self._msgs_sent[i]
+                budget_remaining = np.array(
+                    [(self.comm_budget - used) / max(self.comm_budget, 1)],
+                    dtype=np.float32,
+                )
+
+            obs_list.append(np.concatenate([raw, msg_onehot, budget_remaining]))
         return obs_list
 
     def _get_info(self):

@@ -61,6 +61,7 @@ class DQNAgent:
         target_update: int = 200,
         buffer_size: int = 50_000,
         agent_id: int = 0,
+        goal_buffer_min: int = 32,  # was 8 — too few unique goal transitions
     ):
         self.obs_dim = obs_dim
         self.n_actions = n_actions
@@ -72,6 +73,7 @@ class DQNAgent:
         self.batch_size = batch_size
         self.target_update = target_update
         self.agent_id = agent_id
+        self.goal_buffer_min = goal_buffer_min
         self.device = torch.device("cpu")
         self.steps = 0
         self.msg_steps = 0
@@ -137,7 +139,7 @@ class DQNAgent:
         if len(buffer) < self.batch_size:
             return None
 
-        if goal_buffer is not None and len(goal_buffer) >= 8:
+        if goal_buffer is not None and len(goal_buffer) >= self.goal_buffer_min:
             n_goal = self.batch_size // 4
             n_main = self.batch_size - n_goal
             main_batch = buffer.sample(n_main)

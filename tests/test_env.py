@@ -60,6 +60,22 @@ def test_env_step():
     print("✓ env.step()")
 
 
+def test_single_agent_without_opponent():
+    env = RocketEnv(n_agents=1, curriculum="easy", opponent=False)
+    obs_list, _ = env.reset(seed=0)
+
+    assert len(obs_list) == 1
+    assert np.all(obs_list[0][2:4] == 0.0)
+    assert np.all(obs_list[0][8:10] == 0.0)
+    assert np.array_equal(env._agent_pos.shape, (1, 2))
+    assert np.array_equal(env._opp_pos, np.zeros(2, dtype=np.float32))
+
+    next_obs, _, terminated, truncated, _ = env.step([0])
+    assert len(next_obs) == 1
+    assert not terminated and not truncated
+    print("✓ single-agent environment without opponent or teammate")
+
+
 def test_goal_reward_precedes_bounce():
     env = RocketEnv()
     env.reset(seed=0)
@@ -275,6 +291,7 @@ if __name__ == "__main__":
     test_env_reset()
     test_curriculum_modes()
     test_env_step()
+    test_single_agent_without_opponent()
     test_goal_reward_precedes_bounce()
     test_nonterminal_ball_bounces()
     test_potential_reward_shaping()

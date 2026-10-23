@@ -37,6 +37,9 @@ python tests/test_env.py
 # Render a hardcoded ceiling-bounce and goal demonstration
 python -m experiments.render_goal_demo
 
+# Train and plot a single-agent, no-opponent sanity run
+python -m experiments.single_agent_sanity --episodes 1000
+
 # Train one communication setting (A/B1-B5/C/D)
 python -m experiments.train --setting B3 --episodes 1000
 

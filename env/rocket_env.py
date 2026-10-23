@@ -65,11 +65,14 @@ class RocketEnv(gym.Env):
         comm_every: int = 1,
         max_steps: int = 500,
         curriculum: str = "full",
+        opponent: bool = True,
         render_mode: Optional[str] = None,
     ):
         super().__init__()
         if curriculum not in ("easy", "full"):
             raise ValueError("curriculum must be 'easy' or 'full'")
+        if n_agents not in (1, 2):
+            raise ValueError("n_agents must be 1 or 2")
         self.n_agents = n_agents
         self.obs_frac = obs_frac          # partial observability [0,1]
         self.comm_budget = comm_budget    # None=unlimited, 0=none, N=N msgs/ep
@@ -77,6 +80,7 @@ class RocketEnv(gym.Env):
         self.comm_every = comm_every      # send every K steps
         self.max_steps = max_steps
         self.curriculum = curriculum
+        self.opponent_enabled = opponent
         self.goal_width = 10.0 if curriculum == "easy" else GOAL_W
         self.render_mode = render_mode
 
@@ -151,11 +155,12 @@ class RocketEnv(gym.Env):
                 self._last_touch = i
 
         # --- Check collision with opponent ---
-        d_opp = np.linalg.norm(self._ball_pos - self._opp_pos)
-        if d_opp < AGENT_RADIUS + BALL_RADIUS:
-            direction = self._ball_pos - self._opp_pos
-            direction /= np.linalg.norm(direction) + 1e-8
-            self._ball_vel = direction * MAX_SPEED
+        if self.opponent_enabled:
+            d_opp = np.linalg.norm(self._ball_pos - self._opp_pos)
+            if d_opp < AGENT_RADIUS + BALL_RADIUS:
+                direction = self._ball_pos - self._opp_pos
+                direction /= np.linalg.norm(direction) + 1e-8
+                self._ball_vel = direction * MAX_SPEED
 
         # --- Communication ---
         if messages is not None:
@@ -188,10 +193,11 @@ class RocketEnv(gym.Env):
         self._last_touch = -1
 
         # Agent positions (one row per agent)
-        self._agent_pos = np.array([
+        agent_positions = [
             [FIELD_W * 0.35, FIELD_H * 0.2],
             [FIELD_W * 0.65, FIELD_H * 0.2],
-        ], dtype=np.float32)
+        ]
+        self._agent_pos = np.array(agent_positions[:self.n_agents], dtype=np.float32)
 
         # Ball
         ball_y = FIELD_H * (0.75 if self.curriculum == "easy" else 0.5)
@@ -200,7 +206,10 @@ class RocketEnv(gym.Env):
         self._ball_vel = np.array([np.cos(angle), np.sin(angle)], dtype=np.float32) * 0.3
 
         # Opponent
-        self._opp_pos = np.array([FIELD_W / 2, FIELD_H * 0.85], dtype=np.float32)
+        self._opp_pos = np.array(
+            [FIELD_W / 2, FIELD_H * 0.85] if self.opponent_enabled else [0.0, 0.0],
+            dtype=np.float32,
+        )
 
         # Communication buffers: delayed message queues per agent
         self._msg_buffers = [[] for _ in range(self.n_agents)]  # [(delay_left, token), ...]
@@ -209,7 +218,7 @@ class RocketEnv(gym.Env):
 
     def _move_opponent(self):
         """Simple rule-based opponent: chase ball when it's in upper half."""
-        if self.curriculum == "easy":
+        if not self.opponent_enabled or self.curriculum == "easy":
             return
         target = self._ball_pos.copy()
         direction = target - self._opp_pos
@@ -307,12 +316,22 @@ class RocketEnv(gym.Env):
         """Return list of per-agent observations (with partial obs mask)."""
         obs_list = []
         for i in range(self.n_agents):
+            teammate_pos = (
+                self._agent_pos[1 - i]
+                if self.n_agents > 1
+                else np.zeros(2, dtype=np.float32)
+            )
+            opponent_pos = (
+                self._opp_pos
+                if self.opponent_enabled
+                else np.zeros(2, dtype=np.float32)
+            )
             raw = np.concatenate([
                 self._agent_pos[i] / [FIELD_W, FIELD_H],
-                self._agent_pos[1 - i] / [FIELD_W, FIELD_H],  # teammate
+                teammate_pos / [FIELD_W, FIELD_H],
                 self._ball_pos / [FIELD_W, FIELD_H],
                 self._ball_vel / MAX_SPEED,
-                self._opp_pos / [FIELD_W, FIELD_H],
+                opponent_pos / [FIELD_W, FIELD_H],
             ]).astype(np.float32)
 
             # Partial observability: zero out far objects
@@ -368,9 +387,12 @@ class RocketEnv(gym.Env):
             return max(0, min(r, rows-1)), max(0, min(c, cols-1))
 
         r, c = to_grid(*self._ball_pos); grid[r][c] = 'O'
-        r, c = to_grid(*self._agent_pos[0]); grid[r][c] = '1'
-        r, c = to_grid(*self._agent_pos[1]); grid[r][c] = '2'
-        r, c = to_grid(*self._opp_pos); grid[r][c] = 'X'
+        for i, position in enumerate(self._agent_pos):
+            r, c = to_grid(*position)
+            grid[r][c] = str(i + 1)
+        if self.opponent_enabled:
+            r, c = to_grid(*self._opp_pos)
+            grid[r][c] = 'X'
 
         print(f"\nStep {self._step_count} | Score {self._score_team}-{self._score_opp}")
         print("+" + "-" * cols + "+")

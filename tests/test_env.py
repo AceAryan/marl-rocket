@@ -1,10 +1,19 @@
 """Quick smoke tests."""
 import sys, os
 import tempfile
+from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import numpy as np
-from env.rocket_env import RocketEnv, N_ACTIONS, N_MESSAGES, SHAPING_SCALE
+from env.rocket_env import (
+    BALL_RADIUS,
+    FIELD_H,
+    FIELD_W,
+    N_ACTIONS,
+    N_MESSAGES,
+    SHAPING_SCALE,
+    RocketEnv,
+)
 from agents.dqn_agent import DQNAgent
 from experiments.train import evaluate
 
@@ -49,6 +58,37 @@ def test_env_step():
     assert isinstance(reward, (float, np.floating))
     assert all(env.observation_space.contains(obs) for obs in next_obs)
     print("✓ env.step()")
+
+
+def test_goal_reward_precedes_bounce():
+    env = RocketEnv()
+    env.reset(seed=0)
+    env._ball_pos = np.array([FIELD_W / 2, 29.4], dtype=np.float32)
+    env._ball_vel = np.array([0.0, 0.5], dtype=np.float32)
+
+    with patch.object(env, "_bounce_ball") as bounce:
+        _, _, terminated, truncated, info = env.step([0, 0])
+
+    assert terminated
+    assert not truncated
+    assert info["score_team"] == 1
+    assert env._ball_pos[1] > FIELD_H - BALL_RADIUS
+    bounce.assert_not_called()
+    print("✓ goal is checked before bounce")
+
+
+def test_nonterminal_ball_bounces():
+    env = RocketEnv()
+    env.reset(seed=0)
+    env._ball_pos = np.array([1.0, 15.0], dtype=np.float32)
+    env._ball_vel = np.array([-1.0, 0.0], dtype=np.float32)
+
+    _, _, terminated, _, _ = env.step([0, 0])
+
+    assert not terminated
+    assert env._ball_pos[0] == BALL_RADIUS
+    assert env._ball_vel[0] > 0.0
+    print("✓ non-terminal ball bounces after reward")
 
 
 def test_potential_reward_shaping():
@@ -235,6 +275,8 @@ if __name__ == "__main__":
     test_env_reset()
     test_curriculum_modes()
     test_env_step()
+    test_goal_reward_precedes_bounce()
+    test_nonterminal_ball_bounces()
     test_potential_reward_shaping()
     test_comm_budget_zero()
     test_remaining_budget_observation()

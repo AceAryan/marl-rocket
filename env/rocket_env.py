@@ -131,7 +131,15 @@ class RocketEnv(gym.Env):
         # --- Ball physics ---
         self._ball_pos += self._ball_vel
         self._ball_vel *= BALL_FRICTION
-        self._bounce_ball()
+
+        # --- Rewards & termination ---
+        reward, terminated = self._compute_reward()
+        ball_y_progress = self._ball_pos[1] - prev_ball_pos[1]
+        if ball_y_progress > 0:
+            reward += 0.05 * ball_y_progress
+
+        if not terminated:
+            self._bounce_ball()
 
         # --- Check collisions with agents ---
         for i in range(self.n_agents):
@@ -153,8 +161,6 @@ class RocketEnv(gym.Env):
         if messages is not None:
             self._handle_messages(messages)
 
-        # --- Rewards & termination ---
-        reward, terminated = self._compute_reward()
         truncated = self._step_count >= self.max_steps
         next_potential = 0.0 if terminated or truncated else self._potential(self._ball_pos)
         shaping_reward = SHAPING_SCALE * (
@@ -217,11 +223,24 @@ class RocketEnv(gym.Env):
         )
 
     def _bounce_ball(self):
-        """Wall bounces and clamp."""
+        goal_lo = (FIELD_W - self.goal_width) / 2
+        goal_hi = (FIELD_W + self.goal_width) / 2
+        bx = self._ball_pos[0]
+
+        # X walls
         if self._ball_pos[0] <= BALL_RADIUS or self._ball_pos[0] >= FIELD_W - BALL_RADIUS:
             self._ball_vel[0] *= -1
+
+        # Y walls — bounce everywhere except inside the goal mouth
+        if self._ball_pos[1] >= FIELD_H - BALL_RADIUS and not (goal_lo <= bx <= goal_hi):
+            self._ball_vel[1] *= -1
+        if self._ball_pos[1] <= BALL_RADIUS and not (goal_lo <= bx <= goal_hi):
+            self._ball_vel[1] *= -1
+
         self._ball_pos = np.clip(
-            self._ball_pos, [BALL_RADIUS, BALL_RADIUS], [FIELD_W - BALL_RADIUS, FIELD_H - BALL_RADIUS]
+            self._ball_pos,
+            [BALL_RADIUS, BALL_RADIUS],
+            [FIELD_W - BALL_RADIUS, FIELD_H - BALL_RADIUS],
         )
 
     def _handle_messages(self, messages: list):

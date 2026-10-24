@@ -87,6 +87,8 @@ def train(
         "epsilon": [],
         "goal_buffer_size": [],
     }
+    best_goal_rate = -1.0
+    best_episode = None
     started = time.time()
     for episode in range(1, episodes + 1):
         observations, _ = env.reset(seed=seed if episode == 1 else None)
@@ -99,10 +101,12 @@ def train(
                 action,
                 reward,
                 next_observations[0],
-                done,
-                # was: abs(info["task_reward"]) >= 100.0
-                # that also matched large negative timeout/failure penalties,
-                # polluting the goal buffer with non-scoring transitions.
+                # was: done (terminated or truncated)
+                # Masking the bootstrap on truncation (timeout) tells the
+                # agent there's no future value after running out of time,
+                # which is false and biases Q-values more as training goes on.
+                # Only a true terminal state should zero out the bootstrap.
+                terminated,
                 goal_transition=info["score_team"] > 0,
             )
             agent.update()
@@ -117,6 +121,10 @@ def train(
             history["eval_goal_rate"].append(metrics["goal_rate"])
             history["epsilon"].append(agent.eps)
             history["goal_buffer_size"].append(len(agent.goal_buffer))
+            if metrics["goal_rate"] > best_goal_rate:
+                best_goal_rate = metrics["goal_rate"]
+                best_episode = episode
+                agent.save(os.path.join(output_dir, "best"))
             print(
                 f"Episode {episode:4d}/{episodes} | "
                 f"greedy goals/episode={metrics['mean_goals']:.2f} | "
@@ -147,6 +155,8 @@ def train(
 
     print(f"Saved evaluation history to {history_path}")
     print(f"Saved goal-rate plot to {plot_path}")
+    print(f"Best checkpoint: episode {best_episode}, goal_rate={best_goal_rate:.2f} "
+          f"(saved to {os.path.join(output_dir, 'best')})")
     return history
 
 

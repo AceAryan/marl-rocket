@@ -52,7 +52,7 @@ class DQNAgent:
         n_actions: int,
         n_messages: int = 5,
         hidden: int = 128,
-        lr: float = 1e-3,
+        lr: float = 3e-4,  # was 1e-3 — too high, caused post-peak Q drift
         gamma: float = 0.99,
         eps_start: float = 1.0,
         eps_end: float = 0.05,
@@ -159,7 +159,9 @@ class DQNAgent:
 
         q_selected = network(obs_t).gather(1, act_t.unsqueeze(1)).squeeze(1)
         with torch.no_grad():
-            next_q = target_network(nobs_t).max(dim=1).values
+            # Double DQN: select action with online network, evaluate with target
+            next_actions = network(nobs_t).argmax(dim=1)
+            next_q = target_network(nobs_t).gather(1, next_actions.unsqueeze(1)).squeeze(1)
             target = rew_t + self.gamma * next_q * (1.0 - done_t)
 
         loss = nn.functional.smooth_l1_loss(q_selected, target)

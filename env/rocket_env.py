@@ -18,6 +18,7 @@ MAX_SPEED = 0.8
 BALL_FRICTION = 0.95
 SHAPING_GAMMA = 0.99
 SHAPING_SCALE = 0.01
+POSSESSION_BONUS = 0.01  # was 0.1 — dominated the sparse +100 goal reward
 
 # Actions: 0=noop, 1=up, 2=down, 3=left, 4=right, 5=boost
 N_ACTIONS = 6
@@ -303,7 +304,7 @@ class RocketEnv(gym.Env):
         for i in range(self.n_agents):
             d = np.linalg.norm(self._ball_pos - self._agent_pos[i])
             if d < 2.0:
-                reward += 0.1
+                reward += POSSESSION_BONUS
 
         return reward, terminated
 

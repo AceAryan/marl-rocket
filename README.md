@@ -37,8 +37,8 @@ python tests/test_env.py
 # Render a hardcoded ceiling-bounce and goal demonstration
 python -m experiments.render_goal_demo
 
-# Train and plot a single-agent, no-opponent sanity run
-python -m experiments.single_agent_sanity --episodes 1000
+# Train and plot a two-agent easy-curriculum sanity run with an opponent
+python -m experiments.single_agent_sanity --episodes 1000 --eval_every 100
 
 # Train one communication setting (A/B1-B5/C/D)
 python -m experiments.train --setting B3 --episodes 1000
@@ -71,7 +71,7 @@ python utils/plot_results.py --dir checkpoints --save
 
 **Task reward** (shared): +100 goal, -100 concede, +0.1 proximity to ball. Agents train on this plus discounted potential-based shaping toward the opponent goal (scale 0.01); histories and evaluation report task reward separately from shaped reward.
 
-The ASCII demo above uses upward actions to push the ball toward the top boundary. It shows the ball bouncing and the score staying 0–0 when outside the goal, then scoring 1–0 when aligned with the goal.
+The ASCII demo above uses upward actions to push the ball toward the top boundary. It shows the ball bouncing and the score staying 0–0 when outside the goal, then scoring 1–0 when aligned with the goal. The sanity-run command trains two agents against the rule-based opponent in easy curriculum and saves greedy evaluation goal rate plus mean net ball y-displacement at each checkpoint.
 
 ---
 

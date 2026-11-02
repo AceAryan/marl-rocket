@@ -1,8 +1,13 @@
 """
 RocketEnv: A 2D multi-agent cooperative environment inspired by Rocket League.
 Supports configurable communication budgets, partial observability, and team rewards.
+
+Coordinates: field is [0, W] x [0, H]. The team attacks the goal at y = H and
+defends the goal at y = 0. A scripted opponent defends y = H and tries to push
+the ball toward y = 0.
 """
 
+import math
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
@@ -11,51 +16,94 @@ from typing import Optional
 
 # --- Constants ---
 FIELD_W, FIELD_H = 20.0, 30.0
-GOAL_W = 6.0
+FIELD_D = float(np.hypot(FIELD_W, FIELD_H))   # diagonal, used for observation radius
+GOAL_W = 8.0
 AGENT_RADIUS = 0.5
 BALL_RADIUS = 0.4
-MAX_SPEED = 0.8
-BALL_FRICTION = 0.95
-SHAPING_GAMMA = 0.99
-SHAPING_SCALE = 0.01
-POSSESSION_BONUS = 0.01  # was 0.1 — dominated the sparse +100 goal reward
+CONTACT_DIST = AGENT_RADIUS + BALL_RADIUS
+MAX_SPEED = 0.8          # agent displacement per step
+BOOST_MULT = 1.5
+KICK_SPEED = 1.1         # ball speed after a team kick (dribble-able: ~11 units of travel)
+OPP_SPEED = 0.4          # opponent displacement per step
+OPP_KICK_SPEED = 0.8
+OPP_MIN_Y = 0.7 * FIELD_H  # opponent is a keeper confined to the last 30% of the field
+BALL_FRICTION = 0.90
+SUBSTEPS = 2             # physics substeps per env step (prevents tunnelling)
 
-# Actions: 0=noop, 1=up, 2=down, 3=left, 4=right, 5=boost
+# Reward (task units follow the proposal: +/-100 for goals)
+GOAL_REWARD = 100.0
+PROX_REWARD = 0.1        # per step if any teammate is within PROX_DIST of the ball
+PROX_DIST = 2.0
+SHAPING_GAMMA = 1.0      # undiscounted: with Phi < 0, gamma < 1 would pay (1-gamma)|Phi| per step for idling
+SHAPING_SCALE = 1.0      # potential = -SHAPING_SCALE * dist(ball, opponent goal)
+APPROACH_SCALE = 0.5     #             - APPROACH_SCALE * dist(closest teammate, ball)
+
+# Actions: 0=noop, 1=up, 2=down, 3=left, 4=right, 5=boost (up, faster)
 N_ACTIONS = 6
-MOVE_DELTAS = {
-    0: (0, 0),
-    1: (0, 1),
-    2: (0, -1),
-    3: (-1, 0),
-    4: (1, 0),
-    5: (0, 1.5),  # boost
-}
+MOVE_DELTAS = np.array(
+    [(0, 0), (0, 1), (0, -1), (-1, 0), (1, 0), (0, BOOST_MULT)], dtype=np.float32
+)
 
 # Message vocabulary: 0=none, 1=attack, 2=defend, 3=pass, 4=rotate
 N_MESSAGES = 5
+MSG_TTL = 10             # a received message expires after this many steps
+
+# Observation layout (per agent)
+OBS_SLICES = {
+    "self": slice(0, 2),
+    "mate": slice(2, 4),
+    "mate_vis": slice(4, 5),
+    "ball": slice(5, 7),
+    "ball_vel": slice(7, 9),
+    "ball_rel": slice(9, 11),
+    "ball_vis": slice(11, 12),
+    "opp": slice(12, 14),
+    "opp_vis": slice(14, 15),
+    "msg_token": slice(15, 15 + N_MESSAGES),
+    "msg_ball": slice(20, 24),         # sender's ball pos + vel at send time
+    "msg_ball_vis": slice(24, 25),     # did the sender see the ball
+    "msg_age": slice(25, 26),
+    "budget": slice(26, 27),
+    "time": slice(27, 28),
+}
+OBS_DIM = 28
+
+
+def _dist(a, b):
+    return math.hypot(float(a[0]) - float(b[0]), float(a[1]) - float(b[1]))
+
+
+def _norm_pos(p):
+    """Map field coordinates to [-1, 1]."""
+    return (2.0 * np.asarray(p, dtype=np.float32) / [FIELD_W, FIELD_H] - 1.0).astype(np.float32)
 
 
 class RocketEnv(gym.Env):
     """
     2D multi-agent cooperative environment.
 
-    Observation per agent (flat array):
-        [self_x, self_y, teammate_x, teammate_y,
-         ball_x, ball_y, ball_vx, ball_vy,
-         opp_x, opp_y,
-         last_message_received (one-hot, N_MESSAGES),
-         remaining communication budget fraction]
+    Observation per agent (OBS_DIM floats, see OBS_SLICES):
+        own position, teammate position + visible flag,
+        ball position/velocity, ball position relative to self, ball visible flag,
+        opponent position + visible flag,
+        last received message: token one-hot, the sender's ball sighting
+        (pos, vel, visible) and its age,
+        remaining communication budget fraction, remaining time fraction.
 
-    Action: integer in [0, N_ACTIONS)
+    Under partial observability (obs_frac < 1) an object is masked to zeros
+    (with its visible flag 0) when it is farther than obs_frac * field diagonal.
 
     Communication:
-        comm_budget=None  → unlimited
-        comm_budget=0     → no communication
-        comm_budget=N     → N messages per episode per agent
-        comm_delay=k      → message arrives k steps later
+        comm_budget=None  -> unlimited
+        comm_budget=0     -> no communication
+        comm_budget=N     -> N messages per episode per agent
+        comm_every=k      -> messages can only be sent on steps where t % k == 0
+        comm_delay=d      -> a message sent at step t appears in the obs of step t+d
+    A sent (non-empty) message carries its token plus the sender's current view
+    of the ball, and is delivered to all teammates.
     """
 
-    metadata = {"render_modes": ["human", "rgb_array"]}
+    metadata = {"render_modes": ["human"]}
 
     def __init__(
         self,
@@ -64,7 +112,7 @@ class RocketEnv(gym.Env):
         comm_budget: Optional[int] = None,
         comm_delay: int = 0,
         comm_every: int = 1,
-        max_steps: int = 500,
+        max_steps: int = 200,
         curriculum: str = "full",
         opponent: bool = True,
         render_mode: Optional[str] = None,
@@ -74,31 +122,31 @@ class RocketEnv(gym.Env):
             raise ValueError("curriculum must be 'easy' or 'full'")
         if n_agents not in (1, 2):
             raise ValueError("n_agents must be 1 or 2")
+        if comm_every < 1 or comm_delay < 0:
+            raise ValueError("comm_every must be >= 1 and comm_delay >= 0")
         self.n_agents = n_agents
-        self.obs_frac = obs_frac          # partial observability [0,1]
-        self.comm_budget = comm_budget    # None=unlimited, 0=none, N=N msgs/ep
-        self.comm_delay = comm_delay      # steps before msg arrives
-        self.comm_every = comm_every      # send every K steps
+        self.obs_frac = obs_frac
+        self.comm_budget = comm_budget
+        self.comm_delay = comm_delay
+        self.comm_every = comm_every
         self.max_steps = max_steps
         self.curriculum = curriculum
         self.opponent_enabled = opponent
-        self.goal_width = 10.0 if curriculum == "easy" else GOAL_W
+        self.goal_width = 12.0 if curriculum == "easy" else GOAL_W
+        self.opp_speed = 0.0 if curriculum == "easy" else OPP_SPEED
         self.render_mode = render_mode
 
-        # Observation size per agent
-        self._obs_size = 10 + N_MESSAGES + 1  # positions + ball + opp + message + budget
-
-        obs_low = np.full(self._obs_size, -1.0, dtype=np.float32)
-        obs_high = np.full(self._obs_size, 1.0, dtype=np.float32)
-        obs_low[6:8] = -1.5
-        obs_high[6:8] = 1.5
-        self.observation_space = spaces.Box(
-            low=obs_low, high=obs_high, dtype=np.float32
-        )
+        self._obs_size = OBS_DIM
+        obs_low = np.full(OBS_DIM, -1.0, dtype=np.float32)
+        obs_high = np.full(OBS_DIM, 1.0, dtype=np.float32)
+        for key in ("ball_vel", "msg_ball"):
+            obs_low[OBS_SLICES[key]] = -2.0
+            obs_high[OBS_SLICES[key]] = 2.0
+        self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
         self.action_space = spaces.Discrete(N_ACTIONS)
-        # Message action space (separate)
         self.message_space = spaces.Discrete(N_MESSAGES)
 
+        self.np_random, _ = gym.utils.seeding.np_random(None)
         self._reset_state()
 
     # ------------------------------------------------------------------
@@ -108,262 +156,268 @@ class RocketEnv(gym.Env):
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
         self._reset_state()
-        obs = self._get_obs()
-        info = self._get_info()
-        return obs, info
+        return self._get_obs(), self._get_info()
+
+    def can_send(self, i: int) -> bool:
+        """Whether agent i may send a non-empty message on the upcoming step."""
+        if self.comm_budget is not None and self._msgs_sent[i] >= self.comm_budget:
+            return False
+        return (self._step_count + 1) % self.comm_every == 0
 
     def step(self, actions: list, messages: Optional[list] = None):
         """
         actions  : list of int, length n_agents
         messages : list of int (message tokens), length n_agents, or None
         """
+        allowed = [self.can_send(i) for i in range(self.n_agents)]
         self._step_count += 1
-        prev_ball_pos = self._ball_pos.copy()
+        prev_potential = self._potential()
 
-        # --- Move agents ---
-        for i, a in enumerate(actions):
-            dx, dy = MOVE_DELTAS[a]
-            self._agent_pos[i] += np.array([dx, dy]) * MAX_SPEED
-            self._agent_pos[i] = np.clip(
-                self._agent_pos[i],
+        moves = MOVE_DELTAS[np.asarray(actions, dtype=np.int64)] * MAX_SPEED
+        opp_move = self._opponent_move()
+
+        terminated = False
+        scored = 0
+        for _ in range(SUBSTEPS):
+            self._agent_pos += moves / SUBSTEPS
+            np.clip(
+                self._agent_pos,
                 [AGENT_RADIUS, AGENT_RADIUS],
                 [FIELD_W - AGENT_RADIUS, FIELD_H - AGENT_RADIUS],
+                out=self._agent_pos,
             )
+            if self.opponent_enabled:
+                self._opp_pos += opp_move / SUBSTEPS
+                np.clip(
+                    self._opp_pos,
+                    [AGENT_RADIUS, OPP_MIN_Y],
+                    [FIELD_W - AGENT_RADIUS, FIELD_H - AGENT_RADIUS],
+                    out=self._opp_pos,
+                )
 
-        # --- Move opponent (simple heuristic) ---
-        self._move_opponent()
-
-        # --- Ball physics ---
-        self._ball_pos += self._ball_vel
+            self._ball_pos += self._ball_vel / SUBSTEPS
+            scored = self._check_goal()
+            if scored:
+                terminated = True
+                break
+            self._bounce_ball()
+            self._collide()
         self._ball_vel *= BALL_FRICTION
 
-        # --- Rewards & termination ---
-        reward, terminated = self._compute_reward()
-        ball_y_progress = self._ball_pos[1] - prev_ball_pos[1]
-        if ball_y_progress > 0:
-            reward += 0.05 * ball_y_progress
+        # --- Task reward (shared) ---
+        task_reward = GOAL_REWARD * scored
+        if scored > 0:
+            self._score_team += 1
+        elif scored < 0:
+            self._score_opp += 1
+        if not terminated and min(_dist(p, self._ball_pos) for p in self._agent_pos) < PROX_DIST:
+            task_reward += PROX_REWARD
 
-        if not terminated:
-            self._bounce_ball()
-
-        # --- Check collisions with agents ---
-        for i in range(self.n_agents):
-            d = np.linalg.norm(self._ball_pos - self._agent_pos[i])
-            if d < AGENT_RADIUS + BALL_RADIUS:
-                direction = self._ball_pos - self._agent_pos[i]
-                direction /= np.linalg.norm(direction) + 1e-8
-                self._ball_vel = direction * MAX_SPEED * 1.5
-                self._last_touch = i
-
-        # --- Check collision with opponent ---
-        if self.opponent_enabled:
-            d_opp = np.linalg.norm(self._ball_pos - self._opp_pos)
-            if d_opp < AGENT_RADIUS + BALL_RADIUS:
-                direction = self._ball_pos - self._opp_pos
-                direction /= np.linalg.norm(direction) + 1e-8
-                self._ball_vel = direction * MAX_SPEED
+        # Potential-based shaping toward the opponent goal. Phi of the actual
+        # final state is used on termination too, so conceding is never rewarded.
+        shaping_reward = SHAPING_GAMMA * self._potential() - prev_potential
 
         # --- Communication ---
         if messages is not None:
-            self._handle_messages(messages)
+            self._handle_messages(messages, allowed)
+        self._deliver_messages()
 
-        truncated = self._step_count >= self.max_steps
-        next_potential = 0.0 if terminated or truncated else self._potential(self._ball_pos)
-        shaping_reward = SHAPING_SCALE * (
-            SHAPING_GAMMA * next_potential - self._potential(prev_ball_pos)
-        )
-        task_reward = reward
-        reward += shaping_reward
-
+        truncated = (not terminated) and self._step_count >= self.max_steps
         obs = self._get_obs()
         info = self._get_info()
         info["step"] = self._step_count
-        info["task_reward"] = task_reward
-        info["shaping_reward"] = shaping_reward
-
-        return obs, reward, terminated, truncated, info
+        info["task_reward"] = float(task_reward)
+        info["shaping_reward"] = float(shaping_reward)
+        return obs, float(task_reward + shaping_reward), terminated, truncated, info
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     def _reset_state(self):
+        rng = self.np_random
         self._step_count = 0
         self._score_team = 0
         self._score_opp = 0
-        self._last_touch = -1
 
-        # Agent positions (one row per agent)
-        agent_positions = [
-            [FIELD_W * 0.35, FIELD_H * 0.2],
-            [FIELD_W * 0.65, FIELD_H * 0.2],
-        ]
-        self._agent_pos = np.array(agent_positions[:self.n_agents], dtype=np.float32)
-
-        # Ball
-        ball_y = FIELD_H * (0.75 if self.curriculum == "easy" else 0.5)
-        self._ball_pos = np.array([FIELD_W / 2, ball_y], dtype=np.float32)
-        angle = self.np_random.uniform(0, 2 * np.pi) if hasattr(self, 'np_random') else 0.0
-        self._ball_vel = np.array([np.cos(angle), np.sin(angle)], dtype=np.float32) * 0.3
-
-        # Opponent
-        self._opp_pos = np.array(
-            [FIELD_W / 2, FIELD_H * 0.85] if self.opponent_enabled else [0.0, 0.0],
+        # Agents spawn in their own half: one left, one right
+        xs = [rng.uniform(2.0, FIELD_W / 2 - 1.0), rng.uniform(FIELD_W / 2 + 1.0, FIELD_W - 2.0)]
+        self._agent_pos = np.array(
+            [[xs[i], rng.uniform(2.0, 0.35 * FIELD_H)] for i in range(self.n_agents)],
             dtype=np.float32,
         )
 
-        # Communication buffers: delayed message queues per agent
-        self._msg_buffers = [[] for _ in range(self.n_agents)]  # [(delay_left, token), ...]
-        self._msg_received = [0] * self.n_agents                # last delivered token
-        self._msgs_sent = [0] * self.n_agents                   # budget tracking
+        if self.curriculum == "easy":
+            ball = [rng.uniform(5.0, FIELD_W - 5.0), rng.uniform(0.55, 0.7) * FIELD_H]
+        else:
+            ball = [rng.uniform(3.0, FIELD_W - 3.0), rng.uniform(0.4, 0.6) * FIELD_H]
+        self._ball_pos = np.array(ball, dtype=np.float32)
+        self._ball_vel = np.zeros(2, dtype=np.float32)
 
-    def _move_opponent(self):
-        """Simple rule-based opponent: chase ball when it's in upper half."""
-        if not self.opponent_enabled or self.curriculum == "easy":
-            return
-        target = self._ball_pos.copy()
+        if self.opponent_enabled:
+            self._opp_pos = np.array(
+                [rng.uniform(FIELD_W / 2 - 3.0, FIELD_W / 2 + 3.0), 0.85 * FIELD_H],
+                dtype=np.float32,
+            )
+        else:
+            self._opp_pos = np.array([-100.0, -100.0], dtype=np.float32)
+
+        # Communication state
+        self._msg_queue = []                               # (deliver_step, receiver, token, payload)
+        self._msg_token = [0] * self.n_agents              # last delivered token
+        self._msg_payload = [np.zeros(5, np.float32) for _ in range(self.n_agents)]
+        self._msg_step = [None] * self.n_agents            # step of last delivery
+        self._msgs_sent = [0] * self.n_agents
+
+    def _opponent_move(self):
+        """Scripted keeper confined to y >= OPP_MIN_Y: chase the ball from above
+        (so its clearances head toward the team goal) when the ball nears its
+        zone, otherwise guard its goal mouth."""
+        if not self.opponent_enabled or self.opp_speed == 0.0:
+            return np.zeros(2, dtype=np.float32)
+        ball = self._ball_pos
+        if ball[1] > OPP_MIN_Y - 2.0:
+            target = ball + np.array([0.0, CONTACT_DIST * 0.8], dtype=np.float32)
+            if self._opp_pos[1] < ball[1]:
+                # Get around the ball instead of pushing it into its own goal
+                side = 1.0 if self._opp_pos[0] >= ball[0] else -1.0
+                target = ball + np.array([side * 1.5, 1.5], dtype=np.float32)
+        else:
+            goal_lo = (FIELD_W - self.goal_width) / 2
+            goal_hi = (FIELD_W + self.goal_width) / 2
+            target = np.array([np.clip(ball[0], goal_lo, goal_hi), FIELD_H - 3.0], dtype=np.float32)
         direction = target - self._opp_pos
-        dist = np.linalg.norm(direction)
-        if dist > 0.1:
-            self._opp_pos += (direction / dist) * MAX_SPEED * 0.6
-        self._opp_pos = np.clip(
-            self._opp_pos,
-            [AGENT_RADIUS, FIELD_H * 0.6],
-            [FIELD_W - AGENT_RADIUS, FIELD_H - AGENT_RADIUS],
-        )
+        dist = math.hypot(float(direction[0]), float(direction[1]))
+        if dist < 1e-6:
+            return np.zeros(2, dtype=np.float32)
+        return (direction / dist * min(self.opp_speed, dist)).astype(np.float32)
+
+    def _check_goal(self) -> int:
+        """+1 if the team scored, -1 if the opponent scored, else 0."""
+        goal_lo = (FIELD_W - self.goal_width) / 2
+        goal_hi = (FIELD_W + self.goal_width) / 2
+        bx, by = self._ball_pos
+        if goal_lo <= bx <= goal_hi:
+            if by >= FIELD_H - BALL_RADIUS:
+                return 1
+            if by <= BALL_RADIUS:
+                return -1
+        return 0
 
     def _bounce_ball(self):
-        goal_lo = (FIELD_W - self.goal_width) / 2
-        goal_hi = (FIELD_W + self.goal_width) / 2
-        bx = self._ball_pos[0]
+        lo, hi = BALL_RADIUS, np.array([FIELD_W - BALL_RADIUS, FIELD_H - BALL_RADIUS])
+        for axis in range(2):
+            if self._ball_pos[axis] < lo:
+                self._ball_pos[axis] = 2 * lo - self._ball_pos[axis]
+                self._ball_vel[axis] = abs(self._ball_vel[axis])
+            elif self._ball_pos[axis] > hi[axis]:
+                self._ball_pos[axis] = 2 * hi[axis] - self._ball_pos[axis]
+                self._ball_vel[axis] = -abs(self._ball_vel[axis])
 
-        # X walls
-        if self._ball_pos[0] <= BALL_RADIUS or self._ball_pos[0] >= FIELD_W - BALL_RADIUS:
-            self._ball_vel[0] *= -1
+    def _collide(self):
+        """Kick the ball away from any player touching it."""
+        players = [(p, KICK_SPEED) for p in self._agent_pos]
+        if self.opponent_enabled:
+            players.append((self._opp_pos, OPP_KICK_SPEED))
+        for pos, speed in players:
+            offset = self._ball_pos - pos
+            d = math.hypot(float(offset[0]), float(offset[1]))
+            if d < CONTACT_DIST:
+                direction = offset / d if d > 1e-6 else np.array([0.0, 1.0], dtype=np.float32)
+                self._ball_pos = (pos + direction * CONTACT_DIST).astype(np.float32)
+                self._ball_vel = (direction * speed).astype(np.float32)
+                np.clip(
+                    self._ball_pos,
+                    [BALL_RADIUS, BALL_RADIUS],
+                    [FIELD_W - BALL_RADIUS, FIELD_H - BALL_RADIUS],
+                    out=self._ball_pos,
+                )
 
-        # Y walls — bounce everywhere except inside the goal mouth
-        if self._ball_pos[1] >= FIELD_H - BALL_RADIUS and not (goal_lo <= bx <= goal_hi):
-            self._ball_vel[1] *= -1
-        if self._ball_pos[1] <= BALL_RADIUS and not (goal_lo <= bx <= goal_hi):
-            self._ball_vel[1] *= -1
+    def _visible(self, i: int, pos) -> bool:
+        if self.obs_frac >= 1.0:
+            return True
+        return _dist(pos, self._agent_pos[i]) <= self.obs_frac * FIELD_D
 
-        self._ball_pos = np.clip(
-            self._ball_pos,
-            [BALL_RADIUS, BALL_RADIUS],
-            [FIELD_W - BALL_RADIUS, FIELD_H - BALL_RADIUS],
-        )
+    def _ball_view(self, i: int):
+        """Agent i's view of the ball: (pos, vel) normalised, and a visible flag."""
+        if self._visible(i, self._ball_pos):
+            return _norm_pos(self._ball_pos), self._ball_vel / KICK_SPEED, 1.0
+        return np.zeros(2, np.float32), np.zeros(2, np.float32), 0.0
 
-    def _handle_messages(self, messages: list):
-        """Queue outgoing messages with delay; deliver ready ones."""
+    def _handle_messages(self, messages: list, allowed: list):
+        """Queue outgoing messages (token + sender's ball sighting)."""
         for i, token in enumerate(messages):
-            # Check budget
-            can_send = (
-                token != 0
-                and self._step_count % self.comm_every == 0
-                and (self.comm_budget is None or self._msgs_sent[i] < self.comm_budget)
-            )
-            if can_send:
-                for j in range(self.n_agents):
-                    if j != i:
-                        self._msg_buffers[j].append([self.comm_delay, token])
-                self._msgs_sent[i] += 1
+            if token == 0 or not allowed[i]:
+                continue
+            self._msgs_sent[i] += 1
+            pos, vel, vis = self._ball_view(i)
+            payload = np.concatenate([pos, vel, [vis]]).astype(np.float32)
+            for j in range(self.n_agents):
+                if j != i:
+                    self._msg_queue.append((self._step_count + self.comm_delay, j, int(token), payload))
 
-        # Age buffers and deliver
-        for j in range(self.n_agents):
-            new_buf = []
-            for entry in self._msg_buffers[j]:
-                entry[0] -= 1
-                if entry[0] <= 0:
-                    self._msg_received[j] = entry[1]
-                else:
-                    new_buf.append(entry)
-            self._msg_buffers[j] = new_buf
+    def _deliver_messages(self):
+        pending = []
+        for deliver_step, j, token, payload in self._msg_queue:
+            if deliver_step <= self._step_count:
+                self._msg_token[j] = token
+                self._msg_payload[j] = payload
+                self._msg_step[j] = deliver_step
+            else:
+                pending.append((deliver_step, j, token, payload))
+        self._msg_queue = pending
 
-    def _compute_reward(self):
-        """Shared team reward."""
-        reward = 0.0
-        terminated = False
-
-        bx, by = self._ball_pos
-        goal_lo = (FIELD_W - self.goal_width) / 2
-        goal_hi = (FIELD_W + self.goal_width) / 2
-
-        # Team scores (ball enters opponent goal at top)
-        if by >= FIELD_H - BALL_RADIUS and goal_lo <= bx <= goal_hi:
-            reward += 100.0
-            self._score_team += 1
-            terminated = True
-
-        # Opponent scores (ball enters our goal at bottom)
-        if by <= BALL_RADIUS and goal_lo <= bx <= goal_hi:
-            reward -= 100.0
-            self._score_opp += 1
-            terminated = True
-
-        # Possession: agent near ball
-        for i in range(self.n_agents):
-            d = np.linalg.norm(self._ball_pos - self._agent_pos[i])
-            if d < 2.0:
-                reward += POSSESSION_BONUS
-
-        return reward, terminated
-
-    @staticmethod
-    def _potential(ball_pos):
-        opponent_goal = np.array([FIELD_W / 2, FIELD_H], dtype=np.float32)
-        return -float(np.linalg.norm(ball_pos - opponent_goal))
+    def _potential(self):
+        """Phi(s): ball close to the opponent goal, and some teammate close to
+        the ball (min over the team, so only one agent is pulled to the ball)."""
+        ball_to_goal = _dist(self._ball_pos, (FIELD_W / 2, FIELD_H))
+        closest = min(_dist(p, self._ball_pos) for p in self._agent_pos)
+        return -SHAPING_SCALE * ball_to_goal - APPROACH_SCALE * closest
 
     def _get_obs(self):
         """Return list of per-agent observations (with partial obs mask)."""
         obs_list = []
+        time_left = 1.0 - self._step_count / self.max_steps
         for i in range(self.n_agents):
-            teammate_pos = (
-                self._agent_pos[1 - i]
-                if self.n_agents > 1
-                else np.zeros(2, dtype=np.float32)
-            )
-            opponent_pos = (
-                self._opp_pos
-                if self.opponent_enabled
-                else np.zeros(2, dtype=np.float32)
-            )
-            raw = np.concatenate([
-                self._agent_pos[i] / [FIELD_W, FIELD_H],
-                teammate_pos / [FIELD_W, FIELD_H],
-                self._ball_pos / [FIELD_W, FIELD_H],
-                self._ball_vel / MAX_SPEED,
-                opponent_pos / [FIELD_W, FIELD_H],
-            ]).astype(np.float32)
+            o = np.zeros(OBS_DIM, dtype=np.float32)
+            o[OBS_SLICES["self"]] = _norm_pos(self._agent_pos[i])
 
-            # Partial observability: zero out far objects
-            if self.obs_frac < 1.0:
-                visible_objects = (
-                    (slice(2, 4), None),  # teammate
-                    (slice(4, 6), slice(6, 8)),  # ball and its velocity
-                    (slice(8, 10), None),  # opponent
-                )
-                for pos_slice, related_slice in visible_objects:
-                    obj_pos = raw[pos_slice] * [FIELD_W, FIELD_H]
-                    dist = np.linalg.norm(obj_pos - self._agent_pos[i])
-                    if dist > FIELD_H * self.obs_frac:
-                        raw[pos_slice] = 0.0
-                        if related_slice is not None:
-                            raw[related_slice] = 0.0
+            if self.n_agents > 1 and self._visible(i, self._agent_pos[1 - i]):
+                o[OBS_SLICES["mate"]] = _norm_pos(self._agent_pos[1 - i])
+                o[OBS_SLICES["mate_vis"]] = 1.0
 
-            # One-hot message
-            msg_onehot = np.zeros(N_MESSAGES, dtype=np.float32)
-            msg_onehot[self._msg_received[i]] = 1.0
+            pos, vel, vis = self._ball_view(i)
+            if vis:
+                o[OBS_SLICES["ball"]] = pos
+                o[OBS_SLICES["ball_vel"]] = vel
+                rel = (self._ball_pos - self._agent_pos[i]) / [FIELD_W, FIELD_H]
+                o[OBS_SLICES["ball_rel"]] = rel
+                o[OBS_SLICES["ball_vis"]] = 1.0
+
+            if self.opponent_enabled and self._visible(i, self._opp_pos):
+                o[OBS_SLICES["opp"]] = _norm_pos(self._opp_pos)
+                o[OBS_SLICES["opp_vis"]] = 1.0
+
+            # Messages expire after MSG_TTL steps; otherwise a budgeted agent's
+            # last sighting would persist, stale but flagged visible, all episode.
+            age = None if self._msg_step[i] is None else self._step_count - self._msg_step[i]
+            if age is not None and age <= MSG_TTL:
+                o[OBS_SLICES["msg_token"]][self._msg_token[i]] = 1.0
+                o[OBS_SLICES["msg_ball"]] = self._msg_payload[i][:4]
+                o[OBS_SLICES["msg_ball_vis"]] = self._msg_payload[i][4]
+                o[OBS_SLICES["msg_age"]] = age / MSG_TTL
+            else:
+                o[OBS_SLICES["msg_token"]][0] = 1.0
+                o[OBS_SLICES["msg_age"]] = 1.0
 
             if self.comm_budget is None:
-                budget_remaining = np.array([1.0], dtype=np.float32)
+                o[OBS_SLICES["budget"]] = 1.0
             else:
-                used = self._msgs_sent[i]
-                budget_remaining = np.array(
-                    [(self.comm_budget - used) / max(self.comm_budget, 1)],
-                    dtype=np.float32,
+                o[OBS_SLICES["budget"]] = (
+                    (self.comm_budget - self._msgs_sent[i]) / max(self.comm_budget, 1)
                 )
-
-            obs_list.append(np.concatenate([raw, msg_onehot, budget_remaining]))
+            o[OBS_SLICES["time"]] = time_left
+            obs_list.append(o)
         return obs_list
 
     def _get_info(self):
@@ -371,7 +425,9 @@ class RocketEnv(gym.Env):
             "score_team": self._score_team,
             "score_opp": self._score_opp,
             "msgs_sent": self._msgs_sent.copy(),
+            "can_send": [self.can_send(i) for i in range(self.n_agents)],
             "ball_pos": self._ball_pos.copy(),
+            "agent_pos": self._agent_pos.copy(),
         }
 
     def render(self):

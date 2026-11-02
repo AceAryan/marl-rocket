@@ -31,74 +31,100 @@ marl-rocket/
 ```bash
 pip install -r requirements.txt
 
-# Run smoke tests
+# Unit / smoke tests
 python tests/test_env.py
 
-# Render a hardcoded ceiling-bounce and goal demonstration
-python -m experiments.render_goal_demo
+# Train one setting (A, D5, D10, D, D50, C, B)
+python -m experiments.train --setting B --obs_frac 0.25 --episodes 3000
 
-# Train and plot a two-agent easy-curriculum sanity run with an opponent
-python -m experiments.single_agent_sanity --episodes 1000 --eval_every 100
+# Run a sweep in parallel (resumable; finished runs are skipped)
+python -m experiments.run_all --sweep budget --workers 16    # RQ1
+python -m experiments.run_all --sweep all --workers 16       # RQ1 + RQ2 + RQ3
 
-# Train one communication setting (A/B1-B5/C/D)
-python -m experiments.train --setting B3 --episodes 1000
-
-# Run all settings at both visibility levels across five seeds
-python -m experiments.run_all --episodes 1000
-
-# Plot results
-python utils/plot_results.py --dir checkpoints --save
+# Re-summarise / re-plot an existing sweep
+python utils/plot_results.py --dir checkpoints/sweep --save
 ```
 
 ---
 
 ## Environment
 
+20 x 30 field; the team attacks the goal at y = 30 (width 8) and defends y = 0.
+Two learning agents play against a scripted keeper confined to the last 30% of
+the field (y >= 21): it chases the ball from above when the ball nears its zone
+(so its clearances head toward the team goal) and guards its goal mouth otherwise. Spawn positions are randomised.
+Ball physics are dribble-able (kick speed 1.1, friction 0.90, about 11 units of
+travel per touch), so outcomes depend on control rather than ricochets.
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `n_agents` | 2 | Cooperative team size |
-| `obs_frac` | 1.0 | Observation radius (1.0 = full, 0.25 = very limited) |
+| `n_agents` | 2 | Cooperative team size (1 or 2) |
+| `obs_frac` | 1.0 | Observation radius rho as a fraction of the field diagonal |
 | `comm_budget` | None | Max messages per agent per episode (None = unlimited) |
-| `comm_delay` | 0 | Steps before a sent message is delivered |
-| `comm_every` | 1 | Send only every K steps |
-| `max_steps` | 500 | Episode length cap |
+| `comm_delay` | 0 | A message sent at step t is observed at step t + delay |
+| `comm_every` | 1 | Messages can only be sent every k steps |
+| `max_steps` | 200 | Episode length cap |
 
-**State** (per agent): self pos, teammate pos, ball pos+vel, opponent pos, last received message (one-hot), remaining communication budget fraction.
+**Observation** (28 floats, `OBS_SLICES` in `env/rocket_env.py`): own position;
+teammate, ball (+ velocity and position relative to self) and opponent, each with a
+visibility flag and masked to zero when farther than rho x diagonal; the last
+received message (token one-hot, the sender's ball sighting, and its age;
+a message expires after 10 steps, so a spent budget cannot leave a stale
+sighting in the observation for the rest of the episode);
+remaining budget fraction; remaining time fraction.
 
-**Actions**: noop, up, down, left, right, boost.
+**Actions**: noop, up, down, left, right, boost (fast up).
 
-**Messages**: none, attack, defend, pass, rotate.
+**Messages**: none, attack, defend, pass, rotate. A sent message also carries
+the sender's current view of the ball, so communication has real informational
+value under partial observability. The message head is learned (SMDP
+Q-learning between decision points), so agents learn *when* to spend budget.
 
-**Task reward** (shared): +100 goal, -100 concede, +0.1 proximity to ball. Agents train on this plus discounted potential-based shaping toward the opponent goal (scale 0.01); histories and evaluation report task reward separately from shaped reward.
+**Reward** (shared): +100 goal, -100 concede, +0.1 per step while a teammate is
+within 2 units of the ball, plus potential-based shaping Phi(s') - Phi(s) with
+Phi = -dist(ball, opponent goal) - 0.5 * dist(closest teammate, ball). The
+shaping is undiscounted on purpose: with Phi < 0, the discounted form
+gamma * Phi(s') - Phi(s) pays (1 - gamma)|Phi| every step, i.e. it rewards idling
+far from the ball. Training uses reward x 0.1; all reported returns are
+unshaped task reward.
 
-The ASCII demo above uses upward actions to push the ball toward the top boundary. It shows the ball bouncing and the score staying 0–0 when outside the goal, then scoring 1–0 when aligned with the goal. The sanity-run command trains two agents against the rule-based opponent in easy curriculum and saves greedy evaluation goal rate plus mean net ball y-displacement at each checkpoint.
+Scripted reference points (300 episodes, full information): random team +0.4
+return (it almost never touches the ball); hand-coded double attacker +34
+(goal 41%, concede 11%); attacker + keeper +30 (goal 34%, concede 9%).
 
 ---
 
 ## Communication settings
 
-| Setting | Description |
-|---------|-------------|
-| **A** | No communication |
-| **B1** | Budget of 5 messages / episode |
-| **B2** | Budget of 10 messages / episode |
-| **B3** | Budget of 20 messages / episode |
-| **B4** | Budget of 50 messages / episode |
-| **B5** | Budget of 100 messages / episode |
-| **C** | Communication every 5 timesteps |
-| **D** | Unlimited communication |
+| Setting | Budget B | Period k | Description |
+|---------|----------|----------|-------------|
+| **A** | 0 | - | No communication |
+| **D5 / D10** | 5 / 10 | 1 | Tight budgets (saturation curve) |
+| **D** | 20 | 1 | Fixed budget (proposal setting D) |
+| **D50** | 50 | 1 | Loose budget |
+| **C** | inf | 5 | Unlimited, every 5 steps |
+| **B** | inf | 1 | Unlimited, every step |
 
----
+## Sweeps (`experiments/run_all.py --sweep ...`)
 
-## Experiments (from the project design)
+| Sweep | Runs | Question |
+|-------|------|----------|
+| `budget` | all 7 settings x rho in {1.0, 0.25} | RQ1: saturation point |
+| `delay` | A, and B with delay in {0, 1, 2, 5}, rho = 0.25 | RQ2: delay |
+| `obs` | A, B x rho in {1.0, 0.75, 0.5, 0.25} | RQ3: observability |
+| `smoke` | A, B at rho 1.0 / 0.25 and D at 0.25 | quick pipeline check |
+| `all` | union of budget + delay + obs (21 configurations) | |
 
-| # | Variable | Settings |
-|---|----------|---------|
-| 1 | Communication budget | A, B1-B5, D at obs_frac = 1.0 / 0.25, evaluated over five seeds |
-| 2 | Communication delay | 0 / 1 / 2 / 5 steps |
-| 3 | Partial observability | obs_frac = 1.0 / 0.75 / 0.5 / 0.25 |
-| 4 | Team size | n_agents = 2 / 3 / 4 |
-
-Training logs greedy evaluation reward and goal rates every 100 episodes (20 evaluation episodes by default); evaluation transitions are never added to replay. The full sweep uses seeds 42, 123, 7, 99, and 17. Override with `--seeds 42 123 7` or adjust evaluation using `--eval_every` and `--n_eval_episodes`.
-
-Training uses 200-step episodes, an easy curriculum for the first 500 episodes (ball near goal, stationary opponent, wider goal), then full difficulty. Greedy evaluation always uses the full environment and 500-step episodes. Goal/concede transitions are oversampled during DQN updates.
+Default: 5 seeds (0-4), 3000 episodes per run. Agents are independent Double
+DQN (numpy MLPs, 128-128 hidden; faster than PyTorch for networks this small on
+CPU) with 3-step returns, Polyak target updates, one gradient step every 2 env
+steps; epsilon decays linearly to 0.05 over the first 10% of episodes. Every periodic greedy evaluation uses the
+same 50 fixed episode seeds; after training each run gets a 200-episode final
+evaluation on held-out seeds, plus the same evaluation with the channel
+silenced (the return drop measures reliance on communication). `summary.csv`
+reports per-configuration means with 95% CIs, goal/concede rates, mean episode
+length (time to goal), messages per episode, role separation, silenced drop,
+learning-curve AUC (mean periodic greedy return, i.e. sample efficiency), and
+Welch t-tests of final return and AUC against A. Final returns can saturate
+near +100 once a setting learns reliably, so AUC and episode length are the
+metrics with headroom.

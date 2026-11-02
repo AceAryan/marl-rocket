@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from env.rocket_env import BALL_RADIUS, FIELD_H, FIELD_W, RocketEnv
+from env.rocket_env import FIELD_H, FIELD_W, RocketEnv
 
 
 def run_scenario(label: str, ball_x: float) -> tuple[int, bool]:
@@ -25,7 +25,7 @@ def run_scenario(label: str, ball_x: float) -> tuple[int, bool]:
             f"score={info['score_team']}-{info['score_opp']}"
         )
         bounced_off_top |= (
-            env._ball_pos[1] == FIELD_H - BALL_RADIUS and env._ball_vel[1] < 0
+            env._ball_pos[1] > FIELD_H - 3.0 and env._ball_vel[1] < 0
         )
         if terminated or truncated:
             break

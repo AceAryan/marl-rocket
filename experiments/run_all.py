@@ -1,117 +1,123 @@
 """
-Run all communication experiments and produce comparison plots.
+Run the communication sweeps in parallel and summarise the results.
+
+Runs are stored as <save_dir>/obs<rho>/delay<d>/setting_<X>/seed_<s>/history.json.
+A run whose history.json already exists is skipped, so an interrupted sweep
+can be resumed by re-running the same command, and sweeps that share runs
+(e.g. setting B at rho=0.25, delay 0) only train them once.
 
 Usage:
-    python -m experiments.run_all --episodes 500
+    python -m experiments.run_all --sweep budget --workers 16
+    python -m experiments.run_all --sweep all --episodes 3000 --seeds 0 1 2 3 4
 """
 
 import sys, os
+# Tiny matmuls: multithreaded BLAS only adds overhead (and oversubscribes parallel sweeps)
+for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import argparse
-import numpy as np
+import time
+import traceback
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
 from experiments.train import train, COMM_SETTINGS
+from utils.plot_results import summarize, plot
 
-DEFAULT_SEEDS = (42, 123, 7, 99, 17)
+DEFAULT_SEEDS = (0, 1, 2, 3, 4)
+
+# (setting, obs_frac, comm_delay) triples per sweep
+SWEEPS = {
+    # RQ1: budget sweep 0 -> inf, full vs partial observability
+    "budget": [(s, rho, 0) for rho in (1.0, 0.25) for s in COMM_SETTINGS],
+    # RQ2: delay on unlimited communication (partial obs, where messages carry information)
+    "delay": [("A", 0.25, 0)] + [("B", 0.25, d) for d in (0, 1, 2, 5)],
+    # RQ3: value of communication as observability shrinks
+    "obs": [(s, rho, 0) for rho in (1.0, 0.75, 0.5, 0.25) for s in ("A", "B")],
+}
+# Quick end-to-end check of the pipeline
+SWEEPS["smoke"] = [("A", 1.0, 0), ("B", 1.0, 0), ("A", 0.25, 0), ("D", 0.25, 0), ("B", 0.25, 0)]
+SWEEPS["all"] = list(dict.fromkeys(SWEEPS["budget"] + SWEEPS["delay"] + SWEEPS["obs"]))
 
 
-def run_budget_sweep(
-    episodes: int,
-    obs_frac: float = 1.0,
+def run_dir(save_dir, setting, obs_frac, comm_delay, seed):
+    return os.path.join(
+        save_dir, f"obs{obs_frac}", f"delay{comm_delay}", f"setting_{setting}", f"seed_{seed}"
+    )
+
+
+def _run_one(job):
+    try:
+        t0 = time.time()
+        h = train(verbose=False, **job)
+        fe = h["final_eval"]
+        return (
+            f"done  {job['setting']:>3} obs={job['obs_frac']} d={job['comm_delay']} "
+            f"seed={job['seed']} | R={fe['return_mean']:6.1f} goal={fe['goal_rate']:.2f} "
+            f"concede={fe['concede_rate']:.2f} | {time.time() - t0:.0f}s"
+        )
+    except Exception:
+        return f"FAILED {job}\n{traceback.format_exc()}"
+
+
+def run_sweep(
+    sweep: str = "budget",
+    episodes: int = 3000,
     seeds=DEFAULT_SEEDS,
     max_steps: int = 200,
-    eval_max_steps: int = 500,
-    save_dir: str = "checkpoints",
-    eval_every: int = 100,
-    n_eval_episodes: int = 20,
+    save_dir: str = "checkpoints/sweep",
+    eval_every: int = 250,
+    n_eval_episodes: int = 50,
+    n_final_eval: int = 200,
+    workers: int = 8,
 ):
-    seeds = tuple(seeds)
-    if not seeds:
-        raise ValueError("At least one random seed is required")
-    results = {}
-    for setting in COMM_SETTINGS:
-        results[setting] = []
+    jobs = []
+    for setting, obs_frac, comm_delay in SWEEPS[sweep]:
         for seed in seeds:
-            print(f"\n{'='*50}")
-            print(f"  RUNNING SETTING {setting} (obs_frac={obs_frac}, seed={seed})")
-            print(f"{'='*50}")
-            h = train(
-                setting=setting,
-                n_episodes=episodes,
-                obs_frac=obs_frac,
-                seed=seed,
-                max_steps=max_steps,
-                eval_max_steps=eval_max_steps,
-                save_dir=os.path.join(save_dir, f"seed_{seed}"),
-                eval_every=eval_every,
-                n_eval_episodes=n_eval_episodes,
-            )
-            results[setting].append(h)
+            path = run_dir(save_dir, setting, obs_frac, comm_delay, seed)
+            if os.path.exists(os.path.join(path, "history.json")):
+                continue
+            jobs.append(dict(
+                setting=setting, obs_frac=obs_frac, comm_delay=comm_delay, seed=seed,
+                n_episodes=episodes, max_steps=max_steps, save_dir=path,
+                eval_every=eval_every, n_eval_episodes=n_eval_episodes,
+                n_final_eval=n_final_eval,
+            ))
+    total = len(SWEEPS[sweep]) * len(seeds)
+    print(f"Sweep '{sweep}': {total} runs, {total - len(jobs)} already done, "
+          f"{len(jobs)} to train on {workers} workers", flush=True)
 
-    print(f"\n\n=== RESULTS SUMMARY (obs_frac={obs_frac}) ===")
-    print(f"{'Setting':<10} {'Eval Reward':>19} {'Team Goals':>19} {'Opp Goals':>19}")
-    print("-" * 72)
-    for setting, histories in results.items():
-        rewards = [h["eval_reward_mean"][-1] for h in histories]
-        team_goals = [h["eval_score_team_mean"][-1] for h in histories]
-        opponent_goals = [h["eval_score_opp_mean"][-1] for h in histories]
-        comm_cfg = COMM_SETTINGS[setting]
-        if comm_cfg["comm_every"] > 1:
-            desc = f"every {comm_cfg['comm_every']} steps"
-        elif comm_cfg["comm_budget"] is None:
-            desc = "unlimited"
-        else:
-            desc = f"budget={comm_cfg['comm_budget']}"
-        print(
-            f"{setting} ({desc:<13}) | "
-            f"{np.mean(rewards):>8.2f} +/- {np.std(rewards):<7.2f} | "
-            f"{np.mean(team_goals):>8.3f} +/- {np.std(team_goals):<7.3f} | "
-            f"{np.mean(opponent_goals):>8.3f} +/- {np.std(opponent_goals):<7.3f}"
-        )
+    t0 = time.time()
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_run_one, job) for job in jobs]
+        for k, fut in enumerate(as_completed(futures), 1):
+            print(f"[{k}/{len(jobs)} | {(time.time() - t0) / 60:.0f} min] {fut.result()}", flush=True)
 
-    return results
-
-
-def run_all(
-    episodes: int = 1000,
-    seeds=DEFAULT_SEEDS,
-    max_steps: int = 200,
-    eval_max_steps: int = 500,
-    save_dir: str = "checkpoints",
-    eval_every: int = 100,
-    n_eval_episodes: int = 20,
-):
-    return {
-        obs_frac: run_budget_sweep(
-            episodes,
-            obs_frac=obs_frac,
-            seeds=seeds,
-            max_steps=max_steps,
-            eval_max_steps=eval_max_steps,
-            save_dir=save_dir,
-            eval_every=eval_every,
-            n_eval_episodes=n_eval_episodes,
-        )
-        for obs_frac in (1.0, 0.25)
-    }
+    summarize(save_dir)
+    plot(save_dir, save=True)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--episodes", type=int,   default=1000)
+    parser.add_argument("--sweep", default="budget", choices=list(SWEEPS))
+    parser.add_argument("--episodes", type=int, default=3000)
     parser.add_argument("--seeds", type=int, nargs="+", default=list(DEFAULT_SEEDS))
-    parser.add_argument("--max_steps", type=int,  default=200)
-    parser.add_argument("--eval_max_steps", type=int, default=500)
-    parser.add_argument("--save_dir", default="checkpoints")
-    parser.add_argument("--eval_every", type=int, default=100)
-    parser.add_argument("--n_eval_episodes", type=int, default=20)
+    parser.add_argument("--max_steps", type=int, default=200)
+    parser.add_argument("--save_dir", default="checkpoints/sweep")
+    parser.add_argument("--eval_every", type=int, default=250)
+    parser.add_argument("--n_eval_episodes", type=int, default=50)
+    parser.add_argument("--n_final_eval", type=int, default=200)
+    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 4))
     args = parser.parse_args()
-    run_all(
+    run_sweep(
+        sweep=args.sweep,
         episodes=args.episodes,
         seeds=args.seeds,
         max_steps=args.max_steps,
-        eval_max_steps=args.eval_max_steps,
         save_dir=args.save_dir,
         eval_every=args.eval_every,
         n_eval_episodes=args.n_eval_episodes,
+        n_final_eval=args.n_final_eval,
+        workers=args.workers,
     )

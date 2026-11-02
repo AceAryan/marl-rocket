@@ -1,15 +1,18 @@
 """
-Training loop for multi-agent DQN with configurable communication.
+Training loop for independent DQN (IQL-Comm) with configurable communication.
 
 Usage:
     python -m experiments.train --setting A          # no comm
-    python -m experiments.train --setting B1         # tight budget
-    python -m experiments.train --setting C          # every 5 steps
-    python -m experiments.train --setting D          # unlimited comm
-    python -m experiments.train --episodes 2000 --render
+    python -m experiments.train --setting B          # unlimited, every step
+    python -m experiments.train --setting C          # unlimited, every 5 steps
+    python -m experiments.train --setting D          # budget 20 / episode
+    python -m experiments.train --setting B --obs_frac 0.25 --comm_delay 2
 """
 
 import sys, os
+# Tiny matmuls: multithreaded BLAS only adds overhead (and oversubscribes parallel sweeps)
+for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import argparse
@@ -17,300 +20,242 @@ import json
 import random
 import time
 import numpy as np
-import torch
-from env.rocket_env import RocketEnv, N_ACTIONS, N_MESSAGES, SHAPING_GAMMA
+from env.rocket_env import RocketEnv, N_ACTIONS, N_MESSAGES, FIELD_D
 from agents.dqn_agent import DQNAgent
 
-# Communication presets from the project design doc
+# Communication presets. A-D follow the proposal's Table 1; D5/D10/D50 add
+# budget points for the saturation curve (RQ1).
 COMM_SETTINGS = {
-    "A":  dict(comm_budget=0,    comm_delay=0, comm_every=1),  # none
-    "B1": dict(comm_budget=5,    comm_delay=0, comm_every=1),  # very tight
-    "B2": dict(comm_budget=10,   comm_delay=0, comm_every=1),  # tight
-    "B3": dict(comm_budget=20,   comm_delay=0, comm_every=1),  # moderate
-    "B4": dict(comm_budget=50,   comm_delay=0, comm_every=1),  # loose
-    "B5": dict(comm_budget=100,  comm_delay=0, comm_every=1),  # very loose
-    "C":  dict(comm_budget=None, comm_delay=0, comm_every=5),  # periodic
-    "D":  dict(comm_budget=None, comm_delay=0, comm_every=1),  # unlimited
+    "A":   dict(comm_budget=0,    comm_every=1),  # no communication
+    "D5":  dict(comm_budget=5,    comm_every=1),
+    "D10": dict(comm_budget=10,   comm_every=1),
+    "D":   dict(comm_budget=20,   comm_every=1),  # fixed budget (proposal D)
+    "D50": dict(comm_budget=50,   comm_every=1),
+    "C":   dict(comm_budget=None, comm_every=5),  # unlimited, every 5 steps
+    "B":   dict(comm_budget=None, comm_every=1),  # unlimited, every step
 }
+
+REWARD_SCALE = 0.1        # task units are +/-100 per goal; train on +/-10
+EVAL_SEED_BASE = 10_000   # every eval uses the same episodes (common random numbers)
 
 
 def make_env(
-    comm_setting: dict,
+    setting: str,
     obs_frac: float = 1.0,
-    max_steps: int = 500,
+    comm_delay: int = 0,
+    max_steps: int = 200,
     curriculum: str = "full",
 ):
     return RocketEnv(
         n_agents=2,
         obs_frac=obs_frac,
+        comm_delay=comm_delay,
         max_steps=max_steps,
         curriculum=curriculum,
-        **comm_setting,
+        **COMM_SETTINGS[setting],
     )
 
 
-def evaluate(agents, env, n_eval: int = 20, seed: int = 99):
-    """Evaluate greedy policies without storing transitions or updating agents."""
+def evaluate(agents, env, n_eval: int = 50, seed: int = EVAL_SEED_BASE, silence: bool = False):
+    """Greedy evaluation without storing transitions or updating agents.
+
+    silence=True blocks every message (coordination ablation: the return drop
+    measures how much the learned policy relies on the channel)."""
     saved_eps = [agent.eps for agent in agents]
     saved_random_state = random.getstate()
     for agent in agents:
         agent.eps = 0.0
 
-    rewards = []
-    shaped_rewards = []
-    team_goals = []
-    opponent_goals = []
+    returns, team_goals, opp_goals, msgs, separation, lengths = [], [], [], [], [], []
     try:
         for episode in range(n_eval):
             obs_list, info = env.reset(seed=seed + episode)
-            episode_reward = 0.0
-            shaped_episode_reward = 0.0
-            for _ in range(env.max_steps):
-                actions = [agents[i].select_action(obs_list[i]) for i in range(len(agents))]
-                message_due = (info.get("step", 0) + 1) % env.comm_every == 0
+            ep_return = 0.0
+            sep = []
+            while True:
+                actions = [agent.select_action(o) for agent, o in zip(agents, obs_list)]
                 messages = [
-                    agents[i].select_message(
-                        obs_list[i],
-                        budget_exhausted=(
-                            not message_due
-                            or (
-                                env.comm_budget is not None
-                                and info["msgs_sent"][i] >= env.comm_budget
-                            )
-                        ),
-                    )
-                    for i in range(len(agents))
+                    agent.select_message(o, budget_exhausted=silence or not allowed)
+                    for agent, o, allowed in zip(agents, obs_list, info["can_send"])
                 ]
-                obs_list, reward, terminated, truncated, info = env.step(actions, messages)
-                episode_reward += info["task_reward"]
-                shaped_episode_reward += reward
+                obs_list, _, terminated, truncated, info = env.step(actions, messages)
+                ep_return += info["task_reward"]
+                d = np.linalg.norm(info["agent_pos"] - info["ball_pos"], axis=1)
+                sep.append(abs(d[0] - d[1]) / FIELD_D)
                 if terminated or truncated:
                     break
-
-            rewards.append(episode_reward)
-            shaped_rewards.append(shaped_episode_reward)
+            returns.append(ep_return)
             team_goals.append(info["score_team"])
-            opponent_goals.append(info["score_opp"])
+            opp_goals.append(info["score_opp"])
+            msgs.append(sum(info["msgs_sent"]))
+            separation.append(np.mean(sep))
+            lengths.append(info["step"])
     finally:
         for agent, epsilon in zip(agents, saved_eps):
             agent.eps = epsilon
         random.setstate(saved_random_state)
 
+    team_goals = np.asarray(team_goals, dtype=np.float64)
+    opp_goals = np.asarray(opp_goals, dtype=np.float64)
     return {
-        "reward_mean": float(np.mean(rewards)),
-        "reward_std": float(np.std(rewards)),
-        "shaped_reward_mean": float(np.mean(shaped_rewards)),
-        "score_team_mean": float(np.mean(team_goals)),
-        "score_opp_mean": float(np.mean(opponent_goals)),
+        "return_mean": float(np.mean(returns)),
+        "return_std": float(np.std(returns)),
+        "goal_rate": float(np.mean(team_goals > 0)),
+        "concede_rate": float(np.mean(opp_goals > 0)),
+        "goal_diff": float(np.mean(team_goals - opp_goals)),
+        "msgs_mean": float(np.mean(msgs)),
+        "role_separation": float(np.mean(separation)),
+        "episode_length": float(np.mean(lengths)),   # lower = faster goals
     }
 
 
 def train(
-    setting: str = "D",
-    n_episodes: int = 1000,
+    setting: str = "B",
+    n_episodes: int = 3000,
     obs_frac: float = 1.0,
+    comm_delay: int = 0,
     max_steps: int = 200,
-    eval_max_steps: int = 500,
-    curriculum_episodes: int = 500,
-    save_dir: str = "checkpoints",
+    save_dir: str = "checkpoints/manual",
     render: bool = False,
     seed: int = 42,
-    log_every: int = 50,
-    eval_every: int = 100,
-    n_eval_episodes: int = 20,
+    log_every: int = 100,
+    eval_every: int = 250,
+    n_eval_episodes: int = 50,
+    n_final_eval: int = 200,
+    explore_frac: float = 0.1,
+    train_every: int = 2,
+    verbose: bool = True,
 ):
-    if n_episodes <= 0 or max_steps <= 0 or eval_max_steps <= 0:
-        raise ValueError("n_episodes, max_steps, and eval_max_steps must be positive")
-    if curriculum_episodes < 0:
-        raise ValueError("curriculum_episodes cannot be negative")
-    if log_every <= 0 or eval_every <= 0 or n_eval_episodes <= 0:
-        raise ValueError("log_every, eval_every, and n_eval_episodes must be positive")
+    if n_episodes <= 0 or max_steps <= 0:
+        raise ValueError("n_episodes and max_steps must be positive")
+    if log_every <= 0 or eval_every <= 0 or n_eval_episodes <= 0 or train_every <= 0:
+        raise ValueError("log_every, eval_every, n_eval_episodes, train_every must be positive")
 
     np.random.seed(seed)
     random.seed(seed)
-    torch.manual_seed(seed)
-    torch.set_num_threads(1)
 
     comm_cfg = COMM_SETTINGS[setting]
-    curriculum = "easy" if curriculum_episodes > 0 else "full"
-    env = make_env(
-        comm_cfg,
-        obs_frac=obs_frac,
-        max_steps=max_steps,
-        curriculum=curriculum,
-    )
-    eval_env = make_env(
-        comm_cfg,
-        obs_frac=obs_frac,
-        max_steps=eval_max_steps,
-        curriculum="full",
-    )
-
+    uses_comm = comm_cfg["comm_budget"] != 0
+    env = make_env(setting, obs_frac, comm_delay, max_steps)
+    eval_env = make_env(setting, obs_frac, comm_delay, max_steps)
     obs_dim = env.observation_space.shape[0]
 
     agents = [
-        DQNAgent(
-            obs_dim=obs_dim,
-            n_actions=N_ACTIONS,
-            n_messages=N_MESSAGES,
-            hidden=128,
-            lr=1e-3,
-            gamma=SHAPING_GAMMA,
-            eps_start=1.0,
-            eps_end=0.05,
-            eps_decay=max(1, n_episodes * max_steps // 4),
-            batch_size=64,
-            target_update=300,
-            agent_id=i,
-        )
+        DQNAgent(obs_dim=obs_dim, n_actions=N_ACTIONS, n_messages=N_MESSAGES, agent_id=i)
         for i in range(2)
     ]
+    explore_episodes = max(1, int(explore_frac * n_episodes))
 
     history = {
-        "episode_reward": [],
-        "shaped_episode_reward": [],
+        "setting": setting,
+        "obs_frac": obs_frac,
+        "comm_delay": comm_delay,
+        "comm_budget": comm_cfg["comm_budget"],
+        "comm_every": comm_cfg["comm_every"],
+        "seed": seed,
+        "n_episodes": n_episodes,
+        "max_steps": max_steps,
+        "episode_return": [],
         "score_team": [],
         "score_opp": [],
         "msgs_sent": [],
         "eval_episode": [],
-        "eval_reward_mean": [],
-        "eval_reward_std": [],
-        "eval_shaped_reward_mean": [],
-        "eval_score_team_mean": [],
-        "eval_score_opp_mean": [],
-        "training_curriculum": [],
-        "setting": setting,
-        "obs_frac": obs_frac,
-        "comm_budget": comm_cfg["comm_budget"],
-        "training_max_steps": max_steps,
-        "eval_max_steps": eval_max_steps,
-        "curriculum_episodes": curriculum_episodes,
+        "eval": [],
     }
 
+    run_dir = save_dir
     t0 = time.time()
+    total_steps = 0
     for ep in range(1, n_episodes + 1):
-        if ep == curriculum_episodes + 1 and curriculum == "easy":
-            curriculum = "full"
-            env = make_env(
-                comm_cfg,
-                obs_frac=obs_frac,
-                max_steps=max_steps,
-                curriculum=curriculum,
-            )
-            obs_list, info = env.reset(seed=seed + ep)
-        elif ep == 1:
-            obs_list, info = env.reset(seed=seed)
-        else:
-            obs_list, info = env.reset()
-        history["training_curriculum"].append(curriculum)
-        ep_reward = 0.0
-        ep_shaped_reward = 0.0
-        for step in range(max_steps):
-            # Select actions + messages
-            actions = [agents[i].select_action(obs_list[i]) for i in range(2)]
-            message_due = (info.get("step", 0) + 1) % comm_cfg["comm_every"] == 0
-            had_message_choice = [
-                message_due
-                and (
-                    comm_cfg["comm_budget"] is None
-                    or info["msgs_sent"][i] < comm_cfg["comm_budget"]
-                )
-                for i in range(2)
-            ]
-            messages = [
-                agents[i].select_message(
-                    obs_list[i],
-                    budget_exhausted=not had_message_choice[i],
-                )
-                for i in range(2)
-            ]
+        eps = max(0.05, 1.0 - (1.0 - 0.05) * (ep - 1) / explore_episodes)
+        for agent in agents:
+            agent.eps = eps
+        obs_list, info = env.reset(seed=seed * 1_000_003 + ep)
+        ep_return = 0.0
+        while True:
+            actions = [agent.select_action(o) for agent, o in zip(agents, obs_list)]
+            messages = [0, 0]
+            if uses_comm:
+                for i, agent in enumerate(agents):
+                    if info["can_send"][i]:
+                        messages[i] = agent.select_message(obs_list[i])
+                        agent.message_decision(obs_list[i], messages[i])
 
-            # Step environment
             next_obs_list, reward, terminated, truncated, info = env.step(actions, messages)
-            done = terminated or truncated
-            ep_reward += info["task_reward"]
-            ep_shaped_reward += reward
+            ep_return += info["task_reward"]
+            r = reward * REWARD_SCALE
+            total_steps += 1
 
-            # Store transitions
-            for i in range(2):
-                task_reward = info["task_reward"]
-                agents[i].store(
-                    obs_list[i],
-                    actions[i],
-                    reward,
-                    next_obs_list[i],
-                    done,
-                    goal_transition=abs(task_reward) >= 100.0,
-                )
-                agents[i].update()
-                if had_message_choice[i]:
-                    agents[i].store_message(
-                        obs_list[i], messages[i], reward, next_obs_list[i], done
-                    )
-                    agents[i].update_message_head()
+            for i, agent in enumerate(agents):
+                agent.store(obs_list[i], actions[i], r, next_obs_list[i], terminated, truncated)
+                if uses_comm:
+                    agent.message_reward(r)
+                if total_steps % train_every == 0:
+                    agent.update()
+                    if uses_comm:
+                        agent.update_message_head()
 
             obs_list = next_obs_list
-
             if render:
                 env.render()
-
-            if done:
+            if terminated or truncated:
                 break
 
-        history["episode_reward"].append(ep_reward)
-        history["shaped_episode_reward"].append(ep_shaped_reward)
+        for i, agent in enumerate(agents):
+            agent.end_episode(obs_list[i])
+
+        history["episode_return"].append(ep_return)
         history["score_team"].append(info["score_team"])
         history["score_opp"].append(info["score_opp"])
         history["msgs_sent"].append(sum(info["msgs_sent"]))
 
-        if ep % log_every == 0:
-            recent = history["episode_reward"][-log_every:]
-            avg_r  = np.mean(recent)
-            avg_g  = np.mean(history["score_team"][-log_every:])
-            avg_ag = np.mean(history["score_opp"][-log_every:])
-            eps    = agents[0].eps
-            elapsed = time.time() - t0
+        if verbose and ep % log_every == 0:
+            recent = slice(-log_every, None)
             print(
-                f"[{setting}] Ep {ep:5d}/{n_episodes} | "
-                f"{curriculum} | "
-                f"AvgR={avg_r:7.1f} | Goals {avg_g:.2f}-{avg_ag:.2f} | "
-                f"eps={eps:.3f} | {elapsed:.0f}s"
+                f"[{setting} obs={obs_frac} d={comm_delay} s={seed}] Ep {ep:5d}/{n_episodes} | "
+                f"R={np.mean(history['episode_return'][recent]):7.1f} | "
+                f"Goals {np.mean(history['score_team'][recent]):.2f}-"
+                f"{np.mean(history['score_opp'][recent]):.2f} | "
+                f"msgs={np.mean(history['msgs_sent'][recent]):5.1f} | "
+                f"eps={eps:.3f} | {time.time() - t0:.0f}s",
+                flush=True,
             )
 
         if ep % eval_every == 0 or ep == n_episodes:
-            metrics = evaluate(
-                agents,
-                eval_env,
-                n_eval=n_eval_episodes,
-                seed=seed + ep * n_eval_episodes,
-            )
+            metrics = evaluate(agents, eval_env, n_eval=n_eval_episodes)
             history["eval_episode"].append(ep)
-            history["eval_reward_mean"].append(metrics["reward_mean"])
-            history["eval_reward_std"].append(metrics["reward_std"])
-            history["eval_shaped_reward_mean"].append(metrics["shaped_reward_mean"])
-            history["eval_score_team_mean"].append(metrics["score_team_mean"])
-            history["eval_score_opp_mean"].append(metrics["score_opp_mean"])
-            print(
-                f"[{setting}] Eval Ep {ep:5d} | "
-                f"Reward={metrics['reward_mean']:7.2f} +/- {metrics['reward_std']:.2f} | "
-                f"Goals {metrics['score_team_mean']:.2f}-{metrics['score_opp_mean']:.2f}"
-            )
+            history["eval"].append(metrics)
+            if verbose:
+                print(
+                    f"[{setting} obs={obs_frac} d={comm_delay} s={seed}] Eval {ep:5d} | "
+                    f"R={metrics['return_mean']:7.1f} | goal={metrics['goal_rate']:.2f} "
+                    f"concede={metrics['concede_rate']:.2f} | msgs={metrics['msgs_mean']:.1f}",
+                    flush=True,
+                )
 
-    # Save
-    ckpt_path = os.path.join(save_dir, f"obs{obs_frac}", f"setting_{setting}")
-    os.makedirs(ckpt_path, exist_ok=True)
-    for a in agents:
-        a.save(ckpt_path)
-    def _to_py(obj):
-        if isinstance(obj, (np.floating, np.integer)): return obj.item()
-        if isinstance(obj, np.ndarray): return obj.tolist()
-        if isinstance(obj, dict): return {k: _to_py(v) for k, v in obj.items()}
-        if isinstance(obj, list): return [_to_py(v) for v in obj]
-        return obj
-    with open(os.path.join(ckpt_path, "history.json"), "w") as f:
-        json.dump(_to_py(history), f)
+    # Final, larger evaluation on held-out seeds (disjoint from periodic evals)
+    final_seed = EVAL_SEED_BASE + 100_000
+    history["final_eval"] = evaluate(agents, eval_env, n_eval=n_final_eval, seed=final_seed)
+    if uses_comm:
+        history["final_eval_silenced"] = evaluate(
+            agents, eval_env, n_eval=n_final_eval, seed=final_seed, silence=True
+        )
+    history["train_seconds"] = time.time() - t0
+    history["total_steps"] = total_steps
 
-    print(f"\nSaved to {ckpt_path}")
+    os.makedirs(run_dir, exist_ok=True)
+    for agent in agents:
+        agent.save(run_dir)
+    with open(os.path.join(run_dir, "history.json"), "w") as f:
+        json.dump(history, f)
+
+    if verbose:
+        fe = history["final_eval"]
+        print(
+            f"[{setting} obs={obs_frac} d={comm_delay} s={seed}] FINAL ({n_final_eval} eps) | "
+            f"R={fe['return_mean']:.1f} | goal={fe['goal_rate']:.2f} concede={fe['concede_rate']:.2f}"
+            f" | saved to {run_dir}"
+        )
     return history
 
 
@@ -318,29 +263,38 @@ def train(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--setting",  default="D", choices=list(COMM_SETTINGS))
-    parser.add_argument("--episodes", type=int,   default=1000)
+    parser.add_argument("--setting", default="B", choices=list(COMM_SETTINGS))
+    parser.add_argument("--episodes", type=int, default=3000)
     parser.add_argument("--obs_frac", type=float, default=1.0)
+    parser.add_argument("--comm_delay", type=int, default=0)
     parser.add_argument("--max_steps", type=int, default=200)
-    parser.add_argument("--eval_max_steps", type=int, default=500)
-    parser.add_argument("--curriculum_episodes", type=int, default=500)
-    parser.add_argument("--seed",     type=int,   default=42)
-    parser.add_argument("--render",   action="store_true")
-    parser.add_argument("--log_every",type=int,   default=50)
-    parser.add_argument("--eval_every", type=int, default=100)
-    parser.add_argument("--n_eval_episodes", type=int, default=20)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--save_dir", default=None)
+    parser.add_argument("--render", action="store_true")
+    parser.add_argument("--log_every", type=int, default=100)
+    parser.add_argument("--eval_every", type=int, default=250)
+    parser.add_argument("--n_eval_episodes", type=int, default=50)
+    parser.add_argument("--n_final_eval", type=int, default=200)
+    parser.add_argument("--explore_frac", type=float, default=0.1)
+    parser.add_argument("--train_every", type=int, default=2)
     args = parser.parse_args()
 
     train(
         setting=args.setting,
         n_episodes=args.episodes,
         obs_frac=args.obs_frac,
+        comm_delay=args.comm_delay,
         max_steps=args.max_steps,
-        eval_max_steps=args.eval_max_steps,
-        curriculum_episodes=args.curriculum_episodes,
+        save_dir=args.save_dir or os.path.join(
+            "checkpoints", "manual", f"obs{args.obs_frac}_delay{args.comm_delay}",
+            f"setting_{args.setting}", f"seed_{args.seed}",
+        ),
         render=args.render,
         seed=args.seed,
         log_every=args.log_every,
         eval_every=args.eval_every,
         n_eval_episodes=args.n_eval_episodes,
+        n_final_eval=args.n_final_eval,
+        explore_frac=args.explore_frac,
+        train_every=args.train_every,
     )

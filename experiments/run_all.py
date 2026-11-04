@@ -27,17 +27,19 @@ from utils.plot_results import summarize, plot
 
 DEFAULT_SEEDS = (0, 1, 2, 3, 4)
 
+PARTIAL_RHO = 0.15   # partial observability level for the budget and delay sweeps
+
 # (setting, obs_frac, comm_delay) triples per sweep
 SWEEPS = {
     # RQ1: budget sweep 0 -> inf, full vs partial observability
-    "budget": [(s, rho, 0) for rho in (1.0, 0.25) for s in COMM_SETTINGS],
+    "budget": [(s, rho, 0) for rho in (1.0, PARTIAL_RHO) for s in COMM_SETTINGS],
     # RQ2: delay on unlimited communication (partial obs, where messages carry information)
-    "delay": [("A", 0.25, 0)] + [("B", 0.25, d) for d in (0, 1, 2, 5)],
+    "delay": [("A", PARTIAL_RHO, 0)] + [("B", PARTIAL_RHO, d) for d in (0, 1, 2, 5)],
     # RQ3: value of communication as observability shrinks
-    "obs": [(s, rho, 0) for rho in (1.0, 0.75, 0.5, 0.25) for s in ("A", "B")],
+    "obs": [(s, rho, 0) for rho in (1.0, 0.25, PARTIAL_RHO, 0.1) for s in ("A", "B")],
 }
 # Quick end-to-end check of the pipeline
-SWEEPS["smoke"] = [("A", 1.0, 0), ("B", 1.0, 0), ("A", 0.25, 0), ("D", 0.25, 0), ("B", 0.25, 0)]
+SWEEPS["smoke"] = [("A", 1.0, 0), ("B", 1.0, 0), ("A", PARTIAL_RHO, 0), ("D", PARTIAL_RHO, 0), ("B", PARTIAL_RHO, 0)]
 SWEEPS["all"] = list(dict.fromkeys(SWEEPS["budget"] + SWEEPS["delay"] + SWEEPS["obs"]))
 
 
@@ -63,10 +65,10 @@ def _run_one(job):
 
 def run_sweep(
     sweep: str = "budget",
-    episodes: int = 3000,
+    episodes: int = 4000,
     seeds=DEFAULT_SEEDS,
     max_steps: int = 200,
-    save_dir: str = "checkpoints/sweep",
+    save_dir: str = "checkpoints/sweep_assist",
     eval_every: int = 250,
     n_eval_episodes: int = 50,
     n_final_eval: int = 200,
@@ -101,10 +103,10 @@ def run_sweep(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--sweep", default="budget", choices=list(SWEEPS))
-    parser.add_argument("--episodes", type=int, default=3000)
+    parser.add_argument("--episodes", type=int, default=4000)
     parser.add_argument("--seeds", type=int, nargs="+", default=list(DEFAULT_SEEDS))
     parser.add_argument("--max_steps", type=int, default=200)
-    parser.add_argument("--save_dir", default="checkpoints/sweep")
+    parser.add_argument("--save_dir", default="checkpoints/sweep_assist")
     parser.add_argument("--eval_every", type=int, default=250)
     parser.add_argument("--n_eval_episodes", type=int, default=50)
     parser.add_argument("--n_final_eval", type=int, default=200)

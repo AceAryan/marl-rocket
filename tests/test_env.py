@@ -58,7 +58,7 @@ def test_observation_space_bounds():
 
 
 def test_team_goal():
-    env = RocketEnv()
+    env = RocketEnv(assist_required=False)
     env.reset(seed=0)
     _park_players(env)
     _freeze_ball(env, [FIELD_W / 2, FIELD_H - 1.0], [0.0, 1.0])
@@ -66,6 +66,70 @@ def test_team_goal():
     assert terminated and not truncated
     assert info["score_team"] == 1 and info["task_reward"] == GOAL_REWARD
     print("ok  team goal")
+
+
+def _shot_after_touches(env, touches):
+    """Agent 0 shoots from just below the goal mouth after the given touches."""
+    env.reset(seed=0)
+    _park_players(env)
+    env._step_count = 50
+    for who, step in touches:
+        if who == "opp":
+            env._last_opp_touch = step
+        else:
+            env._last_touch[who] = step
+    env._agent_pos[0] = [FIELD_W / 2, FIELD_H - 2.3]
+    _freeze_ball(env, [FIELD_W / 2, FIELD_H - 1.3])
+    _, _, terminated, _, info = env.step([1, 0])   # agent 0 pushes the ball in
+    for _ in range(3):
+        if terminated:
+            break
+        _, _, terminated, _, info = env.step([0, 0])
+    return terminated, info
+
+
+def test_assisted_goal_counts():
+    terminated, info = _shot_after_touches(RocketEnv(), [(1, 30)])
+    assert terminated and info["score_team"] == 1
+    print("ok  assisted goal counts")
+
+
+def test_unassisted_goal_bounces():
+    env = RocketEnv()
+    for touches in ([], [(1, 30), ("opp", 40)], [(1, 50 - 41)]):  # none / opp since / too old
+        terminated, info = _shot_after_touches(env, touches)
+        assert not terminated and info["score_team"] == 0, touches
+        assert env._ball_pos[1] < FIELD_H
+    print("ok  unassisted goals bounce off the goal line")
+
+
+def test_assist_shaping_pays_on_pass():
+    from env.rocket_env import ASSIST_POTENTIAL, ASSIST_GAMMA
+    env = RocketEnv(opponent=False)
+    env.reset(seed=0)
+    env._agent_pos[:] = [[10.0, 10.0], [10.0, 13.0]]
+    _freeze_ball(env, [10.0, 11.0])
+    _, _, _, _, info = env.step([1, 0])   # agent 0 touches: no live assist yet
+    base_phi = env._potential()
+    env._agent_pos[:] = [[2.0, 2.0], [env._ball_pos[0], env._ball_pos[1] + 0.6]]
+    env._ball_vel[:] = 0.0
+    phi_before = env._potential()
+    _, _, _, _, info = env.step([0, 2])   # agent 1 touches: a goal by agent 1 would now count
+    assert env._assisted(env._last_toucher)
+    expected = env._potential() - phi_before + ASSIST_GAMMA * ASSIST_POTENTIAL
+    assert np.isclose(info["shaping_reward"], expected), (info["shaping_reward"], expected)
+    print("ok  the pass that creates a live assist pays the assist potential")
+
+
+def test_assist_flags_observed():
+    env = RocketEnv(opponent=False)
+    env.reset(seed=0)
+    env._agent_pos[:] = [[10.0, 10.0], [3.0, 3.0]]
+    _freeze_ball(env, [10.0, 11.0])
+    obs, *_ = env.step([1, 0])   # agent 0 touches the ball
+    assert obs[0][OBS_SLICES["assist_mate"]][0] == 1.0 and obs[0][OBS_SLICES["assist_me"]][0] == 0.0
+    assert obs[1][OBS_SLICES["assist_me"]][0] == 1.0 and obs[1][OBS_SLICES["assist_mate"]][0] == 0.0
+    print("ok  assist eligibility is observable")
 
 
 def test_opponent_goal():
@@ -172,6 +236,7 @@ def test_message_carries_ball_sighting():
     assert obs[1][OBS_SLICES["msg_ball_vis"]][0] == 1.0
     assert np.allclose(obs[1][OBS_SLICES["msg_ball"]][:2], obs[0][OBS_SLICES["ball"]])
     assert obs[1][OBS_SLICES["msg_age"]][0] == 0.0
+    assert np.allclose(obs[1][OBS_SLICES["msg_sender"]], obs[0][OBS_SLICES["self"]])
     obs, *_ = env.step([0, 0], [0, 0])
     assert obs[1][OBS_SLICES["msg_age"]][0] > 0.0
     print("ok  messages carry the sender's ball sighting under partial observability")

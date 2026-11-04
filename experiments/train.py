@@ -45,6 +45,7 @@ def make_env(
     comm_delay: int = 0,
     max_steps: int = 200,
     curriculum: str = "full",
+    opponent: bool = False,
 ):
     return RocketEnv(
         n_agents=2,
@@ -52,6 +53,7 @@ def make_env(
         comm_delay=comm_delay,
         max_steps=max_steps,
         curriculum=curriculum,
+        opponent=opponent,
         **COMM_SETTINGS[setting],
     )
 
@@ -111,7 +113,7 @@ def evaluate(agents, env, n_eval: int = 50, seed: int = EVAL_SEED_BASE, silence:
 
 def train(
     setting: str = "B",
-    n_episodes: int = 3000,
+    n_episodes: int = 4000,
     obs_frac: float = 1.0,
     comm_delay: int = 0,
     max_steps: int = 200,
@@ -124,6 +126,8 @@ def train(
     n_final_eval: int = 200,
     explore_frac: float = 0.1,
     train_every: int = 2,
+    assist_curriculum: float = 0.0,
+    opponent: bool = False,
     verbose: bool = True,
 ):
     if n_episodes <= 0 or max_steps <= 0:
@@ -136,8 +140,10 @@ def train(
 
     comm_cfg = COMM_SETTINGS[setting]
     uses_comm = comm_cfg["comm_budget"] != 0
-    env = make_env(setting, obs_frac, comm_delay, max_steps)
-    eval_env = make_env(setting, obs_frac, comm_delay, max_steps)
+    # No keeper by default: with assist-based scoring, the keeper made the task
+    # unlearnable for independent DQN within 4000 episodes (0-5% goals).
+    env = make_env(setting, obs_frac, comm_delay, max_steps, opponent=opponent)
+    eval_env = make_env(setting, obs_frac, comm_delay, max_steps, opponent=opponent)
     obs_dim = env.observation_space.shape[0]
 
     agents = [
@@ -155,6 +161,8 @@ def train(
         "seed": seed,
         "n_episodes": n_episodes,
         "max_steps": max_steps,
+        "assist_curriculum": assist_curriculum,
+        "opponent": opponent,
         "episode_return": [],
         "score_team": [],
         "score_opp": [],
@@ -170,6 +178,11 @@ def train(
         eps = max(0.05, 1.0 - (1.0 - 0.05) * (ep - 1) / explore_episodes)
         for agent in agents:
             agent.eps = eps
+        # Assist curriculum: the share of episodes requiring assisted goals ramps
+        # 0 -> 1 over the first `assist_curriculum` of training (learn to score
+        # first, then to pass before shooting). Evaluation always requires them.
+        ramp = 1.0 if assist_curriculum <= 0 else min(1.0, (ep - 1) / (assist_curriculum * n_episodes))
+        env.assist_required = random.random() < ramp
         obs_list, info = env.reset(seed=seed * 1_000_003 + ep)
         ep_return = 0.0
         while True:
@@ -264,7 +277,7 @@ def train(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--setting", default="B", choices=list(COMM_SETTINGS))
-    parser.add_argument("--episodes", type=int, default=3000)
+    parser.add_argument("--episodes", type=int, default=4000)
     parser.add_argument("--obs_frac", type=float, default=1.0)
     parser.add_argument("--comm_delay", type=int, default=0)
     parser.add_argument("--max_steps", type=int, default=200)
@@ -277,6 +290,8 @@ if __name__ == "__main__":
     parser.add_argument("--n_final_eval", type=int, default=200)
     parser.add_argument("--explore_frac", type=float, default=0.1)
     parser.add_argument("--train_every", type=int, default=2)
+    parser.add_argument("--assist_curriculum", type=float, default=0.0)
+    parser.add_argument("--opponent", action="store_true", help="add the scripted keeper")
     args = parser.parse_args()
 
     train(
@@ -297,4 +312,6 @@ if __name__ == "__main__":
         n_final_eval=args.n_final_eval,
         explore_frac=args.explore_frac,
         train_every=args.train_every,
+        assist_curriculum=args.assist_curriculum,
+        opponent=args.opponent,
     )

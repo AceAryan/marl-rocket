@@ -6,7 +6,7 @@ from env.rocket_env import FIELD_H, FIELD_W, RocketEnv
 
 
 def run_scenario(label: str, ball_x: float) -> tuple[int, bool]:
-    env = RocketEnv(curriculum="easy", max_steps=10, render_mode="human")
+    env = RocketEnv(curriculum="easy", max_steps=10, assist_required=False, render_mode="human")
     env.reset(seed=0)
     env._ball_pos = np.array([ball_x, 25.0], dtype=np.float32)
     env._ball_vel = np.zeros(2, dtype=np.float32)

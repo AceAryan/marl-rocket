@@ -37,6 +37,9 @@ PROX_DIST = 2.0
 SHAPING_GAMMA = 1.0      # undiscounted: with Phi < 0, gamma < 1 would pay (1-gamma)|Phi| per step for idling
 SHAPING_SCALE = 1.0      # potential = -SHAPING_SCALE * dist(ball, opponent goal)
 APPROACH_SCALE = 0.5     #             - APPROACH_SCALE * dist(closest teammate, ball)
+ASSIST_WINDOW = 40       # assisted goal: teammate touched the ball within this many steps
+ASSIST_POTENTIAL = 20.0  # Phi_assist while a goal would count (pays out on the pass itself)
+ASSIST_GAMMA = 0.99      # learner's discount: Phi_assist >= 0, so the discounted form is exact
 
 # Actions: 0=noop, 1=up, 2=down, 3=left, 4=right, 5=boost (up, faster)
 N_ACTIONS = 6
@@ -65,8 +68,12 @@ OBS_SLICES = {
     "msg_age": slice(25, 26),
     "budget": slice(26, 27),
     "time": slice(27, 28),
+    "msg_sender": slice(28, 30),       # sender's own position at send time
+    "assist_me": slice(30, 31),        # teammate touched recently: my goal would count
+    "assist_mate": slice(31, 32),      # I touched recently: teammate's goal would count
+    "assist_rule": slice(32, 33),      # this episode requires assisted goals
 }
-OBS_DIM = 28
+OBS_DIM = 33
 
 
 def _dist(a, b):
@@ -115,6 +122,7 @@ class RocketEnv(gym.Env):
         max_steps: int = 200,
         curriculum: str = "full",
         opponent: bool = True,
+        assist_required: bool = True,
         render_mode: Optional[str] = None,
     ):
         super().__init__()
@@ -132,6 +140,10 @@ class RocketEnv(gym.Env):
         self.max_steps = max_steps
         self.curriculum = curriculum
         self.opponent_enabled = opponent
+        # Assist-based scoring: a goal only counts if the teammate touched the
+        # ball within ASSIST_WINDOW steps (and the opponent has not touched it
+        # since); an unassisted shot bounces off the goal line.
+        self.assist_required = assist_required and n_agents > 1
         self.goal_width = 12.0 if curriculum == "easy" else GOAL_W
         self.opp_speed = 0.0 if curriculum == "easy" else OPP_SPEED
         self.render_mode = render_mode
@@ -172,6 +184,7 @@ class RocketEnv(gym.Env):
         allowed = [self.can_send(i) for i in range(self.n_agents)]
         self._step_count += 1
         prev_potential = self._potential()
+        prev_assist = self._assist_potential()
 
         moves = MOVE_DELTAS[np.asarray(actions, dtype=np.int64)] * MAX_SPEED
         opp_move = self._opponent_move()
@@ -197,6 +210,8 @@ class RocketEnv(gym.Env):
 
             self._ball_pos += self._ball_vel / SUBSTEPS
             scored = self._check_goal()
+            if scored > 0 and self.assist_required and not self._assisted(self._last_toucher):
+                scored = 0   # unassisted: the goal line acts as a wall
             if scored:
                 terminated = True
                 break
@@ -216,6 +231,10 @@ class RocketEnv(gym.Env):
         # Potential-based shaping toward the opponent goal. Phi of the actual
         # final state is used on termination too, so conceding is never rewarded.
         shaping_reward = SHAPING_GAMMA * self._potential() - prev_potential
+        # Discount-consistent (Ng et al. 1999) for the assist term: with the
+        # undiscounted form, passing to create assists and letting them expire
+        # nets +K(1 - gamma^window) per cycle, so agents farm passes in midfield.
+        shaping_reward += ASSIST_GAMMA * self._assist_potential() - prev_assist
 
         # --- Communication ---
         if messages is not None:
@@ -265,7 +284,11 @@ class RocketEnv(gym.Env):
         # Communication state
         self._msg_queue = []                               # (deliver_step, receiver, token, payload)
         self._msg_token = [0] * self.n_agents              # last delivered token
-        self._msg_payload = [np.zeros(5, np.float32) for _ in range(self.n_agents)]
+        self._msg_payload = [np.zeros(7, np.float32) for _ in range(self.n_agents)]
+        # Touch history for assists
+        self._last_touch = [-10**9] * self.n_agents     # step of each agent's last touch
+        self._last_opp_touch = -10**9
+        self._last_toucher = None
         self._msg_step = [None] * self.n_agents            # step of last delivery
         self._msgs_sent = [0] * self.n_agents
 
@@ -316,22 +339,37 @@ class RocketEnv(gym.Env):
 
     def _collide(self):
         """Kick the ball away from any player touching it."""
-        players = [(p, KICK_SPEED) for p in self._agent_pos]
+        players = [(p, KICK_SPEED, i) for i, p in enumerate(self._agent_pos)]
         if self.opponent_enabled:
-            players.append((self._opp_pos, OPP_KICK_SPEED))
-        for pos, speed in players:
+            players.append((self._opp_pos, OPP_KICK_SPEED, None))
+        for pos, speed, who in players:
             offset = self._ball_pos - pos
             d = math.hypot(float(offset[0]), float(offset[1]))
             if d < CONTACT_DIST:
                 direction = offset / d if d > 1e-6 else np.array([0.0, 1.0], dtype=np.float32)
                 self._ball_pos = (pos + direction * CONTACT_DIST).astype(np.float32)
                 self._ball_vel = (direction * speed).astype(np.float32)
+                if who is None:
+                    self._last_opp_touch = self._step_count
+                else:
+                    self._last_touch[who] = self._step_count
+                self._last_toucher = who
                 np.clip(
                     self._ball_pos,
                     [BALL_RADIUS, BALL_RADIUS],
                     [FIELD_W - BALL_RADIUS, FIELD_H - BALL_RADIUS],
                     out=self._ball_pos,
                 )
+
+    def _touched_recently(self, j: int) -> bool:
+        t = self._last_touch[j]
+        return t > self._last_opp_touch and self._step_count - t <= ASSIST_WINDOW
+
+    def _assisted(self, scorer) -> bool:
+        """A goal by `scorer` counts if its teammate touched the ball recently."""
+        if scorer is None:
+            return False
+        return any(self._touched_recently(j) for j in range(self.n_agents) if j != scorer)
 
     def _visible(self, i: int, pos) -> bool:
         if self.obs_frac >= 1.0:
@@ -351,7 +389,7 @@ class RocketEnv(gym.Env):
                 continue
             self._msgs_sent[i] += 1
             pos, vel, vis = self._ball_view(i)
-            payload = np.concatenate([pos, vel, [vis]]).astype(np.float32)
+            payload = np.concatenate([pos, vel, [vis], _norm_pos(self._agent_pos[i])]).astype(np.float32)
             for j in range(self.n_agents):
                 if j != i:
                     self._msg_queue.append((self._step_count + self.comm_delay, j, int(token), payload))
@@ -371,8 +409,16 @@ class RocketEnv(gym.Env):
         """Phi(s): ball close to the opponent goal, and some teammate close to
         the ball (min over the team, so only one agent is pulled to the ball)."""
         ball_to_goal = _dist(self._ball_pos, (FIELD_W / 2, FIELD_H))
-        closest = min(_dist(p, self._ball_pos) for p in self._agent_pos)
-        return -SHAPING_SCALE * ball_to_goal - APPROACH_SCALE * closest
+        dists = [_dist(p, self._ball_pos) for p in self._agent_pos]
+        # With assists both agents must reach the ball, so use the mean distance
+        approach = float(np.mean(dists)) if self.assist_required else min(dists)
+        return -SHAPING_SCALE * ball_to_goal - APPROACH_SCALE * approach
+
+    def _assist_potential(self):
+        """K while a live assist exists (a goal by the last toucher would count)."""
+        if self.assist_required and self._assisted(self._last_toucher):
+            return ASSIST_POTENTIAL
+        return 0.0
 
     def _get_obs(self):
         """Return list of per-agent observations (with partial obs mask)."""
@@ -405,6 +451,7 @@ class RocketEnv(gym.Env):
                 o[OBS_SLICES["msg_token"]][self._msg_token[i]] = 1.0
                 o[OBS_SLICES["msg_ball"]] = self._msg_payload[i][:4]
                 o[OBS_SLICES["msg_ball_vis"]] = self._msg_payload[i][4]
+                o[OBS_SLICES["msg_sender"]] = self._msg_payload[i][5:7]
                 o[OBS_SLICES["msg_age"]] = age / MSG_TTL
             else:
                 o[OBS_SLICES["msg_token"]][0] = 1.0
@@ -417,6 +464,10 @@ class RocketEnv(gym.Env):
                     (self.comm_budget - self._msgs_sent[i]) / max(self.comm_budget, 1)
                 )
             o[OBS_SLICES["time"]] = time_left
+            if self.assist_required:
+                o[OBS_SLICES["assist_rule"]] = 1.0
+                o[OBS_SLICES["assist_me"]] = float(self._assisted(i))
+                o[OBS_SLICES["assist_mate"]] = float(self._touched_recently(i))
             obs_list.append(o)
         return obs_list
 

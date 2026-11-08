@@ -1,0 +1,14 @@
+# Python caches
+__pycache__/
+*.pyc
+
+# Model weights and per-agent metadata (large, reproducible by re-training);
+# history.json, summary.csv, results.md and figures are kept.
+checkpoints/**/*.npz
+checkpoints/**/agent*_meta.json
+checkpoints/manual/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

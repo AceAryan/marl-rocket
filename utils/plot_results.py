@@ -14,10 +14,68 @@ import glob
 import json
 import numpy as np
 
-try:
-    from scipy import stats
-except ImportError:  # p-values are skipped without scipy
-    stats = None
+import math
+
+
+# ---- Student-t statistics in plain numpy/math (no scipy dependency) ----
+
+def _betacf(a, b, x, iters=200, eps=1e-12):
+    """Continued fraction for the regularized incomplete beta (Lentz)."""
+    tiny = 1e-300
+    c, d = 1.0, 1.0 - (a + b) * x / (a + 1.0)
+    d = 1.0 / (d if abs(d) > tiny else tiny)
+    h = d
+    for m in range(1, iters + 1):
+        m2 = 2 * m
+        for aa in (m * (b - m) * x / ((a + m2 - 1) * (a + m2)),
+                   -(a + m) * (a + b + m) * x / ((a + m2) * (a + m2 + 1))):
+            d = 1.0 + aa * d
+            d = 1.0 / (d if abs(d) > tiny else tiny)
+            c = 1.0 + aa / c
+            c = c if abs(c) > tiny else tiny
+            h *= d * c
+        if abs(d * c - 1.0) < eps:
+            break
+    return h
+
+
+def _betainc(a, b, x):
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    lbeta = math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+    front = math.exp(lbeta + a * math.log(x) + b * math.log(1.0 - x))
+    if x < (a + 1.0) / (a + b + 2.0):
+        return front * _betacf(a, b, x) / a
+    return 1.0 - front * _betacf(b, a, 1.0 - x) / b
+
+
+def t_sf2(t, df):
+    """Two-sided p-value P(|T| > |t|) for Student t with df degrees of freedom."""
+    return _betainc(df / 2.0, 0.5, df / (df + t * t))
+
+
+def t_ppf975(df):
+    """97.5% quantile of Student t (bisection on the two-sided tail)."""
+    lo, hi = 0.0, 1000.0
+    for _ in range(100):
+        mid = 0.5 * (lo + hi)
+        lo, hi = (mid, hi) if t_sf2(mid, df) > 0.05 else (lo, mid)
+    return 0.5 * (lo + hi)
+
+
+def welch_p(a, b):
+    """Two-sided Welch t-test p-value (unequal variances)."""
+    a, b = np.asarray(a, np.float64), np.asarray(b, np.float64)
+    if len(a) < 2 or len(b) < 2:
+        return np.nan
+    va, vb = a.var(ddof=1) / len(a), b.var(ddof=1) / len(b)
+    if va + vb == 0:
+        return 1.0 if a.mean() == b.mean() else 0.0
+    t = (a.mean() - b.mean()) / math.sqrt(va + vb)
+    df = (va + vb) ** 2 / (va ** 2 / (len(a) - 1) + vb ** 2 / (len(b) - 1))
+    return float(t_sf2(t, df))
 
 # x-axis order of the saturation curve: (setting, budget label)
 BUDGET_ORDER = [("A", "0"), ("D5", "5"), ("D10", "10"), ("D", "20"), ("D50", "50"), ("B", "inf")]
@@ -48,7 +106,7 @@ def _ci95(values):
     if len(values) < 2:
         return 0.0
     se = values.std(ddof=1) / np.sqrt(len(values))
-    t = stats.t.ppf(0.975, len(values) - 1) if stats else 1.96
+    t = t_ppf975(len(values) - 1)
     return float(t * se)
 
 
@@ -89,9 +147,8 @@ def summarize(base_dir: str):
             base = final(baseline, "return_mean")
             row["vs_A_diff"] = np.mean(returns) - np.mean(base)
             base_auc = [np.mean([e["return_mean"] for e in h["eval"]]) for h in baseline]
-            if stats and len(base) > 1 and len(returns) > 1:
-                row["vs_A_p"] = float(stats.ttest_ind(returns, base, equal_var=False).pvalue)
-                row["auc_vs_A_p"] = float(stats.ttest_ind(aucs, base_auc, equal_var=False).pvalue)
+            row["vs_A_p"] = welch_p(returns, base)
+            row["auc_vs_A_p"] = welch_p(aucs, base_auc)
         rows.append(row)
 
     header = (f"{'obs':>5} {'delay':>5} {'set':>4} {'n':>2} | {'return':>15} | {'goal':>5} "

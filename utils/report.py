@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import argparse
 import numpy as np
 
-from utils.plot_results import load_histories, group_runs, _ci95, stats
+from utils.plot_results import load_histories, group_runs, _ci95, welch_p
 
 PARTIAL = 0.15
 # One encoding everywhere: gray = no communication, blue = learned sender,
@@ -53,12 +53,9 @@ def cell(groups, key):
 
 def p_vs_a(groups, key):
     runs, base = groups.get(key), groups.get((key[0], 0, "A"))
-    if not runs or not base or key[2] == "A" or stats is None:
+    if not runs or not base or key[2] == "A":
         return np.nan
-    a, b = goal_rates(runs), goal_rates(base)
-    if len(a) < 2 or len(b) < 2:
-        return np.nan
-    return float(stats.ttest_ind(a, b, equal_var=False).pvalue)
+    return welch_p(goal_rates(runs), goal_rates(base))
 
 
 # ------------------------------------------------------------------ figures
@@ -107,7 +104,8 @@ def fig_budget(plt, groups, out):
     _series(ax, xs, [cell(groups, (1.0, 0, s)) for s, _ in LEARNED_BUDGET], AQUA, "^",
             "Learned sender (full view)", ls=":")
     ax.set_xticks(list(xs), [str(b) for _, b in LEARNED_BUDGET])
-    _style(ax, "RQ1  Goal rate vs message budget", "Messages per agent per episode")
+    _style(ax, "RQ1  Goal rate vs message budget",
+           "Message allowance per agent per 200-step episode (fixed: 200 / period)")
     ax.legend(frameon=False, fontsize=9, loc="lower right")
     fig.tight_layout()
     fig.savefig(out, dpi=200)
@@ -283,18 +281,21 @@ def write_results_md(groups, base, timing_rows=None):
              "(200 = no goal). *Goal % silenced* = the same policy evaluated with the channel "
              "muted (how much it relies on messages).", ""]
 
-    def table(title, keys):
+    def table(title, keys, show_delay=False):
         keys = [k for k in keys if k in groups]
         if not keys:
             return
-        lines.extend([f"## {title}", "", HEADER] + [_row(groups, k) for k in keys] + [""])
+        rows = [_row(groups, k, f"{LABELS.get(k[2], k[2])}, delay {k[1]}"
+                     if show_delay and k[2] != "A" else None) for k in keys]
+        lines.extend([f"## {title}", "", HEADER] + rows + [""])
 
     order = ["A", "D5", "D10", "D", "D50", "C", "B", "F5", "F10", "F20", "F50", "Finf"]
     table(f"RQ1: message budget (rho = {PARTIAL})", [(PARTIAL, 0, s) for s in order])
     table("RQ1: message budget (full view, rho = 1.0)", [(1.0, 0, s) for s in order])
     delays = sorted({k[1] for k in groups if k[0] == PARTIAL})
     table(f"RQ2: message delay (rho = {PARTIAL})",
-          [(PARTIAL, 0, "A")] + [(PARTIAL, d, s) for s in ("B", "Finf") for d in delays])
+          [(PARTIAL, 0, "A")] + [(PARTIAL, d, s) for s in ("B", "Finf") for d in delays],
+          show_delay=True)
     rhos = sorted({k[0] for k in groups if k[1] == 0 and k[2] == "A"}, reverse=True)
     if len(rhos) > 1:
         lines.extend(["## RQ3: observability", "",

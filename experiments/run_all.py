@@ -22,8 +22,9 @@ import time
 import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from experiments.train import train, COMM_SETTINGS
+from experiments.train import train, COMM_SETTINGS, FIXED_SENDERS
 from utils.plot_results import summarize, plot
+from utils.report import build_report
 
 DEFAULT_SEEDS = (0, 1, 2, 3, 4)
 
@@ -38,9 +39,19 @@ SWEEPS = {
     # RQ3: value of communication as observability shrinks
     "obs": [(s, rho, 0) for rho in (1.0, 0.25, PARTIAL_RHO, 0.1) for s in ("A", "B")],
 }
+LEARNED = [s for s in COMM_SETTINGS if s not in FIXED_SENDERS]
+SWEEPS["budget"] = [(s, rho, 0) for rho in (1.0, PARTIAL_RHO) for s in LEARNED]
+# Fixed-schedule senders: the same three questions without a learned message head
+SWEEPS["fixed"] = (
+    [(s, PARTIAL_RHO, 0) for s in FIXED_SENDERS]                       # RQ1
+    + [("Finf", PARTIAL_RHO, d) for d in (1, 2, 5)]                     # RQ2
+    + [("Finf", rho, 0) for rho in (1.0, 0.25, 0.1)]                    # RQ3
+)
+# Pilot of the event-triggered learned sender vs a fixed schedule (A is reused)
+SWEEPS["pilot"] = [(s, PARTIAL_RHO, 0) for s in ("D5", "D", "B", "F20")]
 # Quick end-to-end check of the pipeline
 SWEEPS["smoke"] = [("A", 1.0, 0), ("B", 1.0, 0), ("A", PARTIAL_RHO, 0), ("D", PARTIAL_RHO, 0), ("B", PARTIAL_RHO, 0)]
-SWEEPS["all"] = list(dict.fromkeys(SWEEPS["budget"] + SWEEPS["delay"] + SWEEPS["obs"]))
+SWEEPS["all"] = list(dict.fromkeys(SWEEPS["budget"] + SWEEPS["delay"] + SWEEPS["obs"] + SWEEPS["fixed"]))
 
 
 def run_dir(save_dir, setting, obs_frac, comm_delay, seed):
@@ -68,7 +79,7 @@ def run_sweep(
     episodes: int = 4000,
     seeds=DEFAULT_SEEDS,
     max_steps: int = 200,
-    save_dir: str = "checkpoints/sweep_assist",
+    save_dir: str = "checkpoints/sweep_final",
     eval_every: int = 250,
     n_eval_episodes: int = 50,
     n_final_eval: int = 200,
@@ -98,6 +109,8 @@ def run_sweep(
 
     summarize(save_dir)
     plot(save_dir, save=True)
+    before = "checkpoints/sweep_assist"
+    build_report(save_dir, before if os.path.isdir(before) and save_dir != before else None)
 
 
 if __name__ == "__main__":
@@ -106,7 +119,7 @@ if __name__ == "__main__":
     parser.add_argument("--episodes", type=int, default=4000)
     parser.add_argument("--seeds", type=int, nargs="+", default=list(DEFAULT_SEEDS))
     parser.add_argument("--max_steps", type=int, default=200)
-    parser.add_argument("--save_dir", default="checkpoints/sweep_assist")
+    parser.add_argument("--save_dir", default="checkpoints/sweep_final")
     parser.add_argument("--eval_every", type=int, default=250)
     parser.add_argument("--n_eval_episodes", type=int, default=50)
     parser.add_argument("--n_final_eval", type=int, default=200)

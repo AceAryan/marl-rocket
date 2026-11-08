@@ -20,7 +20,9 @@ import json
 import random
 import time
 import numpy as np
-from env.rocket_env import RocketEnv, N_ACTIONS, N_MESSAGES, FIELD_D
+from env.rocket_env import RocketEnv, N_ACTIONS, N_MESSAGES, FIELD_D, OBS_SLICES
+
+BALL_VIS = OBS_SLICES["ball_vis"].start
 from agents.dqn_agent import DQNAgent
 
 # Communication presets. A-D follow the proposal's Table 1; D5/D10/D50 add
@@ -34,6 +36,12 @@ COMM_SETTINGS = {
     "C":   dict(comm_budget=None, comm_every=5),  # unlimited, every 5 steps
     "B":   dict(comm_budget=None, comm_every=1),  # unlimited, every step
 }
+# Fixed-schedule senders (no learned message head): each agent broadcasts its
+# sighting every k steps, i.e. 200/k messages per 200-step episode. These
+# separate the value of the information from the cost of learning when to send.
+FIXED_SENDERS = {"F5": 40, "F10": 20, "F20": 10, "F50": 4, "Finf": 1}
+for _name, _k in FIXED_SENDERS.items():
+    COMM_SETTINGS[_name] = dict(comm_budget=None, comm_every=_k)
 
 REWARD_SCALE = 0.1        # task units are +/-100 per goal; train on +/-10
 EVAL_SEED_BASE = 10_000   # every eval uses the same episodes (common random numbers)
@@ -58,7 +66,28 @@ def make_env(
     )
 
 
-def evaluate(agents, env, n_eval: int = 50, seed: int = EVAL_SEED_BASE, silence: bool = False):
+def decision_points(obs_list, can_send):
+    """Event-triggered communication: a learned agent decides whether to
+    message only when it may send AND currently sees the ball (otherwise the
+    message would carry no sighting). At all other steps it stays silent."""
+    return [bool(allowed) and o[BALL_VIS] > 0 for o, allowed in zip(obs_list, can_send)]
+
+
+def choose_messages(agents, obs_list, can_send, fixed: bool, silence: bool = False):
+    """Message tokens for this step (0 = stay silent) and the decision mask
+    (which agents made a learned message decision this step)."""
+    if fixed:
+        return [0 if silence or not allowed else 1 for allowed in can_send], [False] * len(agents)
+    decide = decision_points(obs_list, can_send)
+    messages = [
+        agent.select_message(o) if d and not silence else 0
+        for agent, o, d in zip(agents, obs_list, decide)
+    ]
+    return messages, decide
+
+
+def evaluate(agents, env, n_eval: int = 50, seed: int = EVAL_SEED_BASE, silence: bool = False,
+             fixed: bool = False):
     """Greedy evaluation without storing transitions or updating agents.
 
     silence=True blocks every message (coordination ablation: the return drop
@@ -76,10 +105,7 @@ def evaluate(agents, env, n_eval: int = 50, seed: int = EVAL_SEED_BASE, silence:
             sep = []
             while True:
                 actions = [agent.select_action(o) for agent, o in zip(agents, obs_list)]
-                messages = [
-                    agent.select_message(o, budget_exhausted=silence or not allowed)
-                    for agent, o, allowed in zip(agents, obs_list, info["can_send"])
-                ]
+                messages, _ = choose_messages(agents, obs_list, info["can_send"], fixed, silence)
                 obs_list, _, terminated, truncated, info = env.step(actions, messages)
                 ep_return += info["task_reward"]
                 d = np.linalg.norm(info["agent_pos"] - info["ball_pos"], axis=1)
@@ -140,6 +166,8 @@ def train(
 
     comm_cfg = COMM_SETTINGS[setting]
     uses_comm = comm_cfg["comm_budget"] != 0
+    fixed = setting in FIXED_SENDERS
+    learns_msgs = uses_comm and not fixed
     # No keeper by default: with assist-based scoring, the keeper made the task
     # unlearnable for independent DQN within 4000 episodes (0-5% goals).
     env = make_env(setting, obs_frac, comm_delay, max_steps, opponent=opponent)
@@ -158,6 +186,8 @@ def train(
         "comm_delay": comm_delay,
         "comm_budget": comm_cfg["comm_budget"],
         "comm_every": comm_cfg["comm_every"],
+        "fixed_sender": fixed,
+        "event_triggered": learns_msgs,
         "seed": seed,
         "n_episodes": n_episodes,
         "max_steps": max_steps,
@@ -189,9 +219,9 @@ def train(
             actions = [agent.select_action(o) for agent, o in zip(agents, obs_list)]
             messages = [0, 0]
             if uses_comm:
+                messages, decided = choose_messages(agents, obs_list, info["can_send"], fixed)
                 for i, agent in enumerate(agents):
-                    if info["can_send"][i]:
-                        messages[i] = agent.select_message(obs_list[i])
+                    if decided[i]:
                         agent.message_decision(obs_list[i], messages[i])
 
             next_obs_list, reward, terminated, truncated, info = env.step(actions, messages)
@@ -201,11 +231,11 @@ def train(
 
             for i, agent in enumerate(agents):
                 agent.store(obs_list[i], actions[i], r, next_obs_list[i], terminated, truncated)
-                if uses_comm:
+                if learns_msgs:
                     agent.message_reward(r)
                 if total_steps % train_every == 0:
                     agent.update()
-                    if uses_comm:
+                    if learns_msgs:
                         agent.update_message_head()
 
             obs_list = next_obs_list
@@ -235,7 +265,7 @@ def train(
             )
 
         if ep % eval_every == 0 or ep == n_episodes:
-            metrics = evaluate(agents, eval_env, n_eval=n_eval_episodes)
+            metrics = evaluate(agents, eval_env, n_eval=n_eval_episodes, fixed=fixed)
             history["eval_episode"].append(ep)
             history["eval"].append(metrics)
             if verbose:
@@ -248,10 +278,10 @@ def train(
 
     # Final, larger evaluation on held-out seeds (disjoint from periodic evals)
     final_seed = EVAL_SEED_BASE + 100_000
-    history["final_eval"] = evaluate(agents, eval_env, n_eval=n_final_eval, seed=final_seed)
+    history["final_eval"] = evaluate(agents, eval_env, n_eval=n_final_eval, seed=final_seed, fixed=fixed)
     if uses_comm:
         history["final_eval_silenced"] = evaluate(
-            agents, eval_env, n_eval=n_final_eval, seed=final_seed, silence=True
+            agents, eval_env, n_eval=n_final_eval, seed=final_seed, silence=True, fixed=fixed
         )
     history["train_seconds"] = time.time() - t0
     history["total_steps"] = total_steps

@@ -21,7 +21,9 @@ except ImportError:  # p-values are skipped without scipy
 
 # x-axis order of the saturation curve: (setting, budget label)
 BUDGET_ORDER = [("A", "0"), ("D5", "5"), ("D10", "10"), ("D", "20"), ("D50", "50"), ("B", "inf")]
-SETTING_ORDER = ["A", "D5", "D10", "D", "D50", "C", "B"]
+SETTING_ORDER = ["A", "D5", "D10", "D", "D50", "C", "B", "F5", "F10", "F20", "F50", "Finf"]
+# Fixed-schedule senders on the same budget axis (A = 0 messages)
+FIXED_ORDER = [("A", "0"), ("F5", "5"), ("F10", "10"), ("F20", "20"), ("F50", "50"), ("Finf", "inf")]
 
 
 def load_histories(base_dir: str):
@@ -145,7 +147,16 @@ def plot(base_dir: str, save: bool = False):
                 m, c = stat(groups[(obs, 0, setting)])
                 xs.append(x); ms.append(m); cs.append(c)
         if len(xs) > 1:
-            ax.errorbar(xs, ms, yerr=cs, marker="o", capsize=3, label=f"rho={obs}")
+            line = ax.errorbar(xs, ms, yerr=cs, marker="o", capsize=3, label=f"learned, rho={obs}")
+        fx, fm, fc = [], [], []
+        for x, (setting, _) in enumerate(FIXED_ORDER):
+            if (obs, 0, setting) in groups:
+                m, c = stat(groups[(obs, 0, setting)])
+                fx.append(x); fm.append(m); fc.append(c)
+        if len(fx) > 2:
+            ax.errorbar(fx, fm, yerr=fc, marker="s", ls="--", capsize=3,
+                        color=line[0].get_color() if len(xs) > 1 else None,
+                        label=f"fixed schedule, rho={obs}")
     ax.set_xticks(range(len(BUDGET_ORDER)), [b for _, b in BUDGET_ORDER])
     ax.set_xlabel("Message budget B per agent per episode")
     ax.set_ylabel("Final greedy return (95% CI)")
@@ -153,7 +164,8 @@ def plot(base_dir: str, save: bool = False):
 
     # (2) Learning curves (periodic greedy eval), partial obs if present
     ax = axes[1]
-    obs_for_curves = min(k[0] for k in groups)
+    rhos_avail = {k[0] for k in groups}
+    obs_for_curves = 0.15 if 0.15 in rhos_avail else min(rhos_avail)
     for setting in SETTING_ORDER:
         runs = groups.get((obs_for_curves, 0, setting))
         if not runs:
@@ -177,7 +189,11 @@ def plot(base_dir: str, save: bool = False):
         delays = sorted({d for r, d in delayed if r == rho} | {0})
         delays = [d for d in delays if (rho, d, "B") in groups]
         ms, cs = zip(*[stat(groups[(rho, d, "B")]) for d in delays])
-        ax.errorbar(delays, ms, yerr=cs, marker="o", capsize=3, label=f"B, rho={rho}")
+        ax.errorbar(delays, ms, yerr=cs, marker="o", capsize=3, label=f"B (learned), rho={rho}")
+        fdel = [d for d in delays if (rho, d, "Finf") in groups]
+        if fdel:
+            fm, fc = zip(*[stat(groups[(rho, d, "Finf")]) for d in fdel])
+            ax.errorbar(fdel, fm, yerr=fc, marker="s", ls="--", capsize=3, label=f"Finf (fixed), rho={rho}")
         if (rho, 0, "A") in groups:
             ax.axhline(stat(groups[(rho, 0, "A")])[0], ls="--", color="gray", label="A (no comm)")
         ax.set_xlabel("Message delay (steps)")
@@ -191,6 +207,10 @@ def plot(base_dir: str, save: bool = False):
         for setting in ("A", "B"):
             ms, cs = zip(*[stat(groups[(r, 0, setting)]) for r in rhos])
             ax.errorbar(rhos, ms, yerr=cs, marker="o", capsize=3, label=setting)
+        frhos = [r for r in rhos if (r, 0, "Finf") in groups]
+        if frhos:
+            fm, fc = zip(*[stat(groups[(r, 0, "Finf")]) for r in frhos])
+            ax.errorbar(frhos, fm, yerr=fc, marker="s", ls="--", capsize=3, label="Finf (fixed)")
     ax.set_xlabel("Observation radius rho (fraction of field diagonal)")
     ax.set_ylabel("Final greedy return (95% CI)")
     ax.set_title("RQ3: A vs B across observability")
@@ -210,7 +230,7 @@ def plot(base_dir: str, save: bool = False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dir", default="checkpoints/sweep_assist")
+    parser.add_argument("--dir", default="checkpoints/sweep_final")
     parser.add_argument("--save", action="store_true")
     args = parser.parse_args()
     summarize(args.dir)

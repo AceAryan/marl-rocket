@@ -202,7 +202,11 @@ class DQNAgent:
         if budget_exhausted:
             return 0
         if random.random() < self.eps:
-            return random.randrange(self.n_messages)
+            # Silence-biased exploration: a uniform pick would send 4 times in 5
+            # and burn any budget immediately; stay silent half the time instead.
+            if random.random() < 0.5:
+                return 0
+            return random.randrange(1, self.n_messages)
         return int(np.argmax(self.msg_net(obs)))
 
     def store(self, obs, action, reward, next_obs, terminated, truncated=False):

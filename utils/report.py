@@ -1,0 +1,351 @@
+"""
+Report-ready figures and tables for a finished sweep.
+
+Writes into <dir>/figures/:
+    rq1_budget.png, rq2_delay.png, rq3_observability.png,
+    learning_curves.png, send_timing.png
+and <dir>/results.md (one table per research question).
+
+The primary metric is the final greedy goal rate (share of 200 held-out
+episodes with an assisted goal), mean over seeds with a 95% t-interval;
+p-values are Welch t-tests against A (no communication) at the same rho.
+
+Usage:
+    python -m utils.report --dir checkpoints/sweep_final [--before checkpoints/sweep_assist]
+"""
+
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+import argparse
+import numpy as np
+
+from utils.plot_results import load_histories, group_runs, _ci95, stats
+
+PARTIAL = 0.15
+# One encoding everywhere: gray = no communication, blue = learned sender,
+# orange = fixed schedule, aqua = third series where needed.
+GRAY, BLUE, ORANGE, AQUA = "#52514e", "#2a78d6", "#eb6834", "#1baf7a"
+LEARNED_BUDGET = [("A", 0), ("D5", 5), ("D10", 10), ("D", 20), ("D50", 50), ("B", "inf")]
+FIXED_BUDGET = [("A", 0), ("F5", 5), ("F10", 10), ("F20", 20), ("F50", 50), ("Finf", "inf")]
+LABELS = {
+    "A": "A: no communication", "B": "B: learned, unlimited", "C": "C: learned, every 5 steps",
+    "D5": "D5: learned, budget 5", "D10": "D10: learned, budget 10", "D": "D: learned, budget 20",
+    "D50": "D50: learned, budget 50", "F5": "F5: fixed, every 40 steps", "F10": "F10: fixed, every 20 steps",
+    "F20": "F20: fixed, every 10 steps", "F50": "F50: fixed, every 4 steps", "Finf": "Finf: fixed, every step",
+}
+
+
+# ------------------------------------------------------------------ stats
+
+def goal_rates(runs, field="final_eval"):
+    return [100.0 * h[field]["goal_rate"] for h in runs if field in h]
+
+
+def cell(groups, key):
+    """Mean and CI of the final goal rate (%) for one configuration, or None."""
+    runs = groups.get(key)
+    if not runs:
+        return None
+    g = goal_rates(runs)
+    return float(np.mean(g)), _ci95(g), len(g)
+
+
+def p_vs_a(groups, key):
+    runs, base = groups.get(key), groups.get((key[0], 0, "A"))
+    if not runs or not base or key[2] == "A" or stats is None:
+        return np.nan
+    a, b = goal_rates(runs), goal_rates(base)
+    if len(a) < 2 or len(b) < 2:
+        return np.nan
+    return float(stats.ttest_ind(a, b, equal_var=False).pvalue)
+
+
+# ------------------------------------------------------------------ figures
+
+def _style(ax, title, xlabel, ylabel="Final goal rate (%)"):
+    ax.set_title(title, loc="left", fontsize=12, fontweight="bold", color="#0b0b0b")
+    ax.set_xlabel(xlabel, color="#52514e")
+    ax.set_ylabel(ylabel, color="#52514e")
+    ax.grid(axis="y", color="#e4e3df", linewidth=0.8)
+    ax.set_axisbelow(True)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color("#b5b4ad")
+    ax.tick_params(colors="#52514e")
+    if "goal rate" in ylabel.lower() or ylabel == "":
+        ax.set_ylim(0, 105)
+
+
+def _series(ax, xs, cells, color, marker, label, ls="-"):
+    pts = [(x, c) for x, c in zip(xs, cells) if c is not None]
+    if len(pts) < 2:   # a lone point (e.g. only the shared A anchor) is not a series
+        return
+    x = [p[0] for p in pts]
+    m = [p[1][0] for p in pts]
+    e = [p[1][1] for p in pts]
+    ax.errorbar(x, m, yerr=e, color=color, marker=marker, ms=8, lw=2, ls=ls, capsize=4,
+                label=label, markeredgecolor="white", markeredgewidth=1.2)
+
+
+def _a_line(ax, groups, rho, xmax):
+    c = cell(groups, (rho, 0, "A"))
+    if c:
+        ax.axhline(c[0], color=GRAY, ls="--", lw=1.5, label=f"A: no communication ({c[0]:.0f}%)")
+        ax.axhspan(c[0] - c[1], c[0] + c[1], color=GRAY, alpha=0.08, lw=0)
+
+
+def fig_budget(plt, groups, out):
+    fig, ax = plt.subplots(figsize=(7.5, 4.6))
+    xs = range(len(LEARNED_BUDGET))
+    _a_line(ax, groups, PARTIAL, len(xs))
+    _series(ax, xs, [cell(groups, (PARTIAL, 0, s)) for s, _ in FIXED_BUDGET], ORANGE, "s",
+            f"Fixed schedule (rho={PARTIAL})")
+    _series(ax, xs, [cell(groups, (PARTIAL, 0, s)) for s, _ in LEARNED_BUDGET], BLUE, "o",
+            f"Learned sender (rho={PARTIAL})")
+    _series(ax, xs, [cell(groups, (1.0, 0, s)) for s, _ in LEARNED_BUDGET], AQUA, "^",
+            "Learned sender (full view)", ls=":")
+    ax.set_xticks(list(xs), [str(b) for _, b in LEARNED_BUDGET])
+    _style(ax, "RQ1  Goal rate vs message budget", "Messages per agent per episode")
+    ax.legend(frameon=False, fontsize=9, loc="lower right")
+    fig.tight_layout()
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+
+
+def fig_delay(plt, groups, out):
+    delays = sorted({k[1] for k in groups if k[0] == PARTIAL and k[2] in ("B", "Finf")})
+    if not delays:
+        return
+    fig, ax = plt.subplots(figsize=(6.5, 4.4))
+    _a_line(ax, groups, PARTIAL, len(delays))
+    _series(ax, delays, [cell(groups, (PARTIAL, d, "Finf")) for d in delays], ORANGE, "s",
+            "Fixed, every step (Finf)")
+    _series(ax, delays, [cell(groups, (PARTIAL, d, "B")) for d in delays], BLUE, "o",
+            "Learned, unlimited (B)")
+    ax.set_xticks(delays)
+    _style(ax, f"RQ2  Goal rate vs message delay (rho={PARTIAL})", "Delay (steps)")
+    ax.legend(frameon=False, fontsize=9, loc="lower left")
+    fig.tight_layout()
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+
+
+def fig_obs(plt, groups, out):
+    rhos = sorted({k[0] for k in groups if k[1] == 0 and k[2] == "A"})
+    if len(rhos) < 2:
+        return
+    fig, ax = plt.subplots(figsize=(6.5, 4.4))
+    xs = range(len(rhos))
+    _series(ax, xs, [cell(groups, (r, 0, "A")) for r in rhos], GRAY, "D", "A: no communication", ls="--")
+    _series(ax, xs, [cell(groups, (r, 0, "Finf")) for r in rhos], ORANGE, "s", "Fixed, every step (Finf)")
+    _series(ax, xs, [cell(groups, (r, 0, "B")) for r in rhos], BLUE, "o", "Learned, unlimited (B)")
+    ax.set_xticks(list(xs), [f"{r:g}" for r in rhos])
+    _style(ax, "RQ3  Goal rate vs observation radius",
+           "Observation radius rho (fraction of field diagonal; smaller = less visible)")
+    ax.legend(frameon=False, fontsize=9, loc="lower right")
+    fig.tight_layout()
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+
+
+def _curve(ax, runs, color, label, ls="-"):
+    length = min(len(h["eval"]) for h in runs)
+    v = 100.0 * np.array([[e["goal_rate"] for e in h["eval"][:length]] for h in runs])
+    xs = runs[0]["eval_episode"][:length]
+    mean = v.mean(0)
+    se = v.std(0, ddof=1) / np.sqrt(len(runs)) if len(runs) > 1 else 0 * mean
+    ax.plot(xs, mean, color=color, lw=2, ls=ls, label=f"{label} (n={len(runs)})")
+    ax.fill_between(xs, mean - se, mean + se, color=color, alpha=0.15, lw=0)
+
+
+def fig_curves(plt, groups, out):
+    panels = [("Learned sender", [("A", GRAY, "--"), ("D", BLUE, "-"), ("B", AQUA, "-")]),
+              ("Fixed schedule", [("A", GRAY, "--"), ("F20", ORANGE, "-"), ("Finf", AQUA, "-")])]
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), sharey=True)
+    for ax, (title, series) in zip(axes, panels):
+        for s, color, ls in series:
+            runs = groups.get((PARTIAL, 0, s))
+            if runs:
+                _curve(ax, runs, color, LABELS[s], ls)
+        _style(ax, f"{title} (rho={PARTIAL})", "Training episode",
+               "Greedy goal rate (%), mean ± SE" if ax is axes[0] else "")
+        ax.legend(frameon=False, fontsize=9, loc="lower right")
+    fig.tight_layout()
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+
+
+def send_timing(run_dirs, n_episodes=40, seed=30_000, legacy=False):
+    """Replay greedy policies and record when each message is sent and whether
+    the sender saw the ball. run_dirs: list of (setting, rho, seed_dir).
+    legacy=True replays the pre-fix rule (a learned decision at every step
+    the agent may send), for checkpoints trained before event triggering."""
+    from experiments.train import make_env, choose_messages, FIXED_SENDERS, BALL_VIS
+    from agents.dqn_agent import DQNAgent
+    from env.rocket_env import N_ACTIONS, N_MESSAGES
+    steps, visible = [], []
+    for setting, rho, path in run_dirs:
+        env = make_env(setting, rho)
+        agents = [DQNAgent(obs_dim=env.observation_space.shape[0], n_actions=N_ACTIONS,
+                           n_messages=N_MESSAGES, agent_id=i) for i in range(2)]
+        for a in agents:
+            a.load(path)
+            a.eps = 0.0
+        for ep in range(n_episodes):
+            obs, info = env.reset(seed=seed + ep)
+            t = 0
+            while True:
+                acts = [a.select_action(o) for a, o in zip(agents, obs)]
+                if legacy:
+                    msgs = [a.select_message(o, budget_exhausted=not c)
+                            for a, o, c in zip(agents, obs, info["can_send"])]
+                else:
+                    msgs, _ = choose_messages(agents, obs, info["can_send"], setting in FIXED_SENDERS)
+                for i, m in enumerate(msgs):
+                    if m and info["can_send"][i]:
+                        steps.append(t)
+                        visible.append(obs[i][BALL_VIS] > 0)
+                obs, _, term, trunc, info = env.step(acts, msgs)
+                t += 1
+                if term or trunc:
+                    break
+    return np.array(steps), np.array(visible, dtype=bool)
+
+
+def _seed_dirs(base, setting, rho=PARTIAL):
+    d = os.path.join(base, f"obs{rho}", "delay0", f"setting_{setting}")
+    if not os.path.isdir(d):
+        return []
+    return [(setting, rho, os.path.join(d, s)) for s in sorted(os.listdir(d))
+            if os.path.exists(os.path.join(d, s, "agent0_msg.npz"))]
+
+
+def fig_send_timing(plt, base, before, out, setting="D", fixed="F20"):
+    series = []
+    if before:
+        series.append((f"Learned {setting}, before fix", _seed_dirs(before, setting), GRAY, True))
+    series.append((f"Learned {setting}, event-triggered", _seed_dirs(base, setting), BLUE, False))
+    series.append((f"Fixed {fixed}", _seed_dirs(base, fixed), ORANGE, False))
+    series = [s for s in series if s[1]]
+    if not series:
+        return None
+    bins = np.arange(0, 201, 10)
+    fig, ax = plt.subplots(figsize=(7.5, 4.2))
+    rows = []
+    width = 10 / (len(series) + 0.5)
+    for k, (label, dirs, color, legacy) in enumerate(series):
+        steps, vis = send_timing(dirs, legacy=legacy)
+        if len(steps) == 0:
+            continue
+        hist, _ = np.histogram(steps, bins=bins)
+        share = 100.0 * hist / len(steps)
+        ax.bar(bins[:-1] + k * width, share, width=width * 0.9, align="edge", color=color,
+               label=f"{label}: median step {np.median(steps):.0f}, ball seen {100 * vis.mean():.0f}%")
+        rows.append((label, len(dirs), np.median(steps), 100 * np.mean(steps < 10), 100 * vis.mean()))
+    _style(ax, f"When are messages sent? (rho={PARTIAL}, greedy policies)",
+           "Episode step", "Share of messages (%)")
+    ax.legend(frameon=False, fontsize=8.5, loc="upper right")
+    fig.tight_layout()
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+    return rows
+
+
+# ------------------------------------------------------------------ tables
+
+def _row(groups, key, label=None):
+    runs = groups[key]
+    g = goal_rates(runs)
+    sil = goal_rates(runs, "final_eval_silenced")
+    a = groups.get((key[0], 0, "A"))
+    diff = np.mean(g) - np.mean(goal_rates(a)) if a and key[2] != "A" else np.nan
+    p = p_vs_a(groups, key)
+    ep_len = np.mean([h["final_eval"]["episode_length"] for h in runs])
+    msgs = np.mean([h["final_eval"]["msgs_mean"] for h in runs]) / 2
+    fmt = lambda v, f: "-" if v is None or (isinstance(v, float) and np.isnan(v)) else format(v, f)
+    star = "" if np.isnan(p) else (" **" if p < 0.01 else " *" if p < 0.05 else "")
+    return (f"| {label or LABELS.get(key[2], key[2])} | {len(g)} | {np.mean(g):.1f} ± {_ci95(g):.1f} | "
+            f"{fmt(diff, '+.1f')}{star} | {fmt(p, '.3f')} | {ep_len:.0f} | {msgs:.1f} | "
+            f"{fmt(np.mean(sil) if sil else None, '.1f')} |")
+
+
+HEADER = ("| Setting | Seeds | Goal rate % (95% CI) | Δ vs A (pp) | p | Steps to goal | "
+          "Msgs/agent | Goal % silenced |\n|---|---|---|---|---|---|---|---|")
+
+
+def write_results_md(groups, base, timing_rows=None):
+    lines = ["# Results", "",
+             "Final greedy evaluation on 200 held-out episodes per seed. Goal rate = share of "
+             "episodes with an assisted goal. Δ and p: Welch t-test against A at the same "
+             "observation radius (* p<0.05, ** p<0.01). Steps to goal = mean episode length "
+             "(200 = no goal). *Goal % silenced* = the same policy evaluated with the channel "
+             "muted (how much it relies on messages).", ""]
+
+    def table(title, keys):
+        keys = [k for k in keys if k in groups]
+        if not keys:
+            return
+        lines.extend([f"## {title}", "", HEADER] + [_row(groups, k) for k in keys] + [""])
+
+    order = ["A", "D5", "D10", "D", "D50", "C", "B", "F5", "F10", "F20", "F50", "Finf"]
+    table(f"RQ1: message budget (rho = {PARTIAL})", [(PARTIAL, 0, s) for s in order])
+    table("RQ1: message budget (full view, rho = 1.0)", [(1.0, 0, s) for s in order])
+    delays = sorted({k[1] for k in groups if k[0] == PARTIAL})
+    table(f"RQ2: message delay (rho = {PARTIAL})",
+          [(PARTIAL, 0, "A")] + [(PARTIAL, d, s) for s in ("B", "Finf") for d in delays])
+    rhos = sorted({k[0] for k in groups if k[1] == 0 and k[2] == "A"}, reverse=True)
+    if len(rhos) > 1:
+        lines.extend(["## RQ3: observability", "",
+                      "| rho | " + " | ".join(LABELS[s] for s in ("A", "B", "Finf")) + " |",
+                      "|---|---|---|---|"])
+        for r in rhos:
+            cells = []
+            for s in ("A", "B", "Finf"):
+                c = cell(groups, (r, 0, s))
+                p = p_vs_a(groups, (r, 0, s))
+                star = "" if np.isnan(p) else (" **" if p < 0.01 else " *" if p < 0.05 else "")
+                cells.append("-" if c is None else f"{c[0]:.1f} ± {c[1]:.1f}{star}")
+            lines.append(f"| {r:g} | " + " | ".join(cells) + " |")
+        lines.append("")
+    if timing_rows:
+        lines.extend(["## Message timing (greedy, rho = 0.15)", "",
+                      "| Policy | Seeds | Median send step | % sent in first 10 steps | % sent while seeing ball |",
+                      "|---|---|---|---|---|"])
+        for label, n, med, early, vis in timing_rows:
+            lines.append(f"| {label} | {n} | {med:.0f} | {early:.0f} | {vis:.0f} |")
+        lines.append("")
+    out = os.path.join(base, "results.md")
+    with open(out, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return out
+
+
+def build_report(base, before=None):
+    groups = group_runs(load_histories(base))
+    if not groups:
+        print(f"No finished runs in {base}")
+        return
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10})
+    fig_dir = os.path.join(base, "figures")
+    os.makedirs(fig_dir, exist_ok=True)
+    fig_budget(plt, groups, os.path.join(fig_dir, "rq1_budget.png"))
+    fig_delay(plt, groups, os.path.join(fig_dir, "rq2_delay.png"))
+    fig_obs(plt, groups, os.path.join(fig_dir, "rq3_observability.png"))
+    fig_curves(plt, groups, os.path.join(fig_dir, "learning_curves.png"))
+    timing = fig_send_timing(plt, base, before, os.path.join(fig_dir, "send_timing.png"))
+    out = write_results_md(groups, base, timing)
+    print(f"Saved figures to {fig_dir} and tables to {out}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dir", default="checkpoints/sweep_final")
+    parser.add_argument("--before", default="checkpoints/sweep_assist",
+                        help="earlier sweep shown as 'before fix' in the send-timing figure")
+    args = parser.parse_args()
+    build_report(args.dir, args.before if args.before and os.path.isdir(args.before) else None)

@@ -13,12 +13,13 @@ marl-rocket/
 ├── env/
 │   └── rocket_env.py        # Gymnasium-style 2D environment
 ├── agents/
-│   └── dqn_agent.py         # PyTorch independent DQN + message head
+│   └── dqn_agent.py         # numpy independent DQN + message head
 ├── experiments/
 │   ├── train.py             # Single-setting training loop
 │   └── run_all.py           # Budget sweeps at full and partial visibility
 ├── utils/
-│   └── plot_results.py      # Matplotlib curves from saved history
+│   ├── plot_results.py      # summary.csv + combined results.png
+│   └── report.py            # per-RQ figures + results.md tables
 ├── tests/
 │   └── test_env.py          # Smoke tests
 └── requirements.txt
@@ -42,7 +43,8 @@ python -m experiments.run_all --sweep budget --workers 12   # RQ1
 python -m experiments.run_all --sweep all --workers 12      # RQ1-RQ3
 
 # Re-summarise / re-plot an existing sweep
-python utils/plot_results.py --dir checkpoints/sweep_assist --save
+python utils/plot_results.py --dir checkpoints/sweep_final --save
+python -m utils.report --dir checkpoints/sweep_final   # figures/ + results.md
 ```
 
 ---
@@ -96,6 +98,14 @@ ball is there"), so communication has real informational value under partial
 observability. The message head is learned (SMDP
 Q-learning between decision points), so agents learn *when* to spend budget.
 
+Learned communication is **event-triggered**: an agent makes a message decision
+only at steps where it may send and currently sees the ball; otherwise it stays
+silent. Message exploration is silence-biased (an exploratory pick is silent
+half the time). Without these, greedy D5 agents sent 65% of their budget in the
+first 10 steps and about half their messages without seeing the ball (empty
+sightings), so budgeted settings did worse than no communication
+(`checkpoints/sweep_assist`, kept as the "before" result).
+
 **Reward** (shared): +100 goal, -100 concede, +0.1 per step while a teammate is
 within 2 units of the ball, plus two potential-based shaping terms:
 
@@ -144,6 +154,10 @@ higher.
 | **D50** | 50 | 1 | Loose budget |
 | **C** | inf | 5 | Unlimited, every 5 steps |
 | **B** | inf | 1 | Unlimited, every step |
+| **F5 / F10 / F20 / F50 / Finf** | 5 / 10 / 20 / 50 / 200 | 40 / 20 / 10 / 4 / 1 | Fixed schedule: no learned message head, each agent broadcasts its sighting every k steps |
+
+The learned settings (D*, C, B) must also learn *when* to send; the fixed
+schedules isolate the value of the shared information from that learning cost.
 
 ## Sweeps (`experiments/run_all.py --sweep ...`)
 
@@ -152,10 +166,12 @@ higher.
 | `budget` | all 7 settings x rho in {1.0, 0.15} | RQ1: saturation point |
 | `delay` | A, and B with delay in {0, 1, 2, 5}, rho = 0.15 | RQ2: delay |
 | `obs` | A, B x rho in {1.0, 0.25, 0.15, 0.10} | RQ3: observability |
+| `fixed` | F5..Finf at rho 0.15; Finf with delay {1, 2, 5}; Finf at rho {1.0, 0.25, 0.10} | RQ1-RQ3 without a learned message head |
+| `pilot` | D5, D, B, F20 at rho 0.15 | check the event-triggered sender |
 | `smoke` | A, B at rho 1.0 / 0.15 and D at 0.15 | quick pipeline check |
-| `all` | union of budget + delay + obs (21 configurations) | |
+| `all` | union of budget + delay + obs + fixed (32 configurations) | |
 
-Results go to `checkpoints/sweep_assist/`. Default: 5 seeds (0-4), 4000
+Results go to `checkpoints/sweep_final/` (`summary.csv`, `results.png`, `results.md`, `figures/`). The A runs are reused from `checkpoints/sweep_assist/` (unchanged by the message fixes). Default: 5 seeds (0-4), 4000
 episodes per run (channel settings learn more slowly than A at first). Agents are independent Double
 DQN (numpy MLPs, 128-128 hidden; faster than PyTorch for networks this small on
 CPU) with 3-step returns, Polyak target updates, one gradient step every 2 env
@@ -169,3 +185,18 @@ learning-curve AUC (mean periodic greedy return, i.e. sample efficiency), and
 Welch t-tests of final return and AUC against A. Final returns can saturate
 near +100 once a setting learns reliably, so AUC and episode length are the
 metrics with headroom.
+
+## Deviations from the proposal
+
+- **Assist-based scoring**: a goal counts only if the teammate touched the ball
+  within the last 40 steps. Without it, the shared sightings barely changed
+  scripted goal rates (at most 5 points), so no experiment could detect a benefit
+  from communication.
+- **No scripted keeper** in the main experiments (`--opponent` adds it). With
+  assists plus the keeper, independent DQN learned nothing in 4000 episodes
+  (0-5% goal rate), so concede rate and goal difference are not meaningful.
+- **Event-triggered learned messages** and **fixed-schedule baselines (F*)**,
+  which separate the value of the shared information from the cost of learning
+  when to send.
+- The main partial-observability level is rho = 0.15 (proposal: 0.25), where
+  sharing matters for scripted teams; 0.25 is still in the RQ3 sweep.

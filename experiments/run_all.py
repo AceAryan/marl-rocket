@@ -26,7 +26,7 @@ from experiments.train import train, COMM_SETTINGS, FIXED_SENDERS
 from utils.plot_results import summarize, plot
 from utils.report import build_report
 
-DEFAULT_SEEDS = (0, 1, 2, 3, 4)
+DEFAULT_SEEDS = tuple(range(10))
 
 PARTIAL_RHO = 0.15   # partial observability level for the budget and delay sweeps
 
@@ -79,9 +79,9 @@ def run_sweep(
     episodes: int = 4000,
     seeds=DEFAULT_SEEDS,
     max_steps: int = 200,
-    save_dir: str = "checkpoints/sweep_final",
+    save_dir: str = "checkpoints/sweep_v2",
     eval_every: int = 250,
-    n_eval_episodes: int = 50,
+    n_eval_episodes: int = 100,
     n_final_eval: int = 200,
     workers: int = 8,
 ):
@@ -119,9 +119,9 @@ if __name__ == "__main__":
     parser.add_argument("--episodes", type=int, default=4000)
     parser.add_argument("--seeds", type=int, nargs="+", default=list(DEFAULT_SEEDS))
     parser.add_argument("--max_steps", type=int, default=200)
-    parser.add_argument("--save_dir", default="checkpoints/sweep_final")
+    parser.add_argument("--save_dir", default="checkpoints/sweep_v2")
     parser.add_argument("--eval_every", type=int, default=250)
-    parser.add_argument("--n_eval_episodes", type=int, default=50)
+    parser.add_argument("--n_eval_episodes", type=int, default=100)
     parser.add_argument("--n_final_eval", type=int, default=200)
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 4))
     args = parser.parse_args()

@@ -275,7 +275,9 @@ HEADER = ("| Setting | Seeds | Goal rate % (95% CI) | Δ vs A (pp) | p | Steps t
 
 def write_results_md(groups, base, timing_rows=None):
     lines = ["# Results", "",
-             "Final greedy evaluation on 200 held-out episodes per seed. Goal rate = share of "
+             "Each run keeps the policy snapshot with the best goal rate on the periodic "
+             "validation episodes; it is then scored on 200 separate held-out episodes. "
+             "Goal rate = share of "
              "episodes with an assisted goal. Δ and p: Welch t-test against A at the same "
              "observation radius (* p<0.05, ** p<0.01). Steps to goal = mean episode length "
              "(200 = no goal). *Goal % silenced* = the same policy evaluated with the channel "
@@ -345,7 +347,7 @@ def build_report(base, before=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dir", default="checkpoints/sweep_final")
+    parser.add_argument("--dir", default="checkpoints/sweep_v2")
     parser.add_argument("--before", default="checkpoints/sweep_assist",
                         help="earlier sweep shown as 'before fix' in the send-timing figure")
     args = parser.parse_args()

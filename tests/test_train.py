@@ -90,7 +90,8 @@ def test_train_smoke_all_kinds():
             h = train(setting=setting, n_episodes=3, obs_frac=0.15, max_steps=40,
                       save_dir=os.path.join(d, setting), eval_every=3, n_eval_episodes=2,
                       n_final_eval=2, verbose=False, seed=0)
-            assert "final_eval" in h and len(h["eval"]) == 1
+            assert "final_eval" in h and "final_eval_last" in h and len(h["eval"]) == 1
+            assert h["best_episode"] in h["eval_episode"]
             assert h["fixed_sender"] == (setting == "F20")
             assert h["event_triggered"] == (setting in ("D", "B"))
             assert ("final_eval_silenced" in h) == (setting != "A")

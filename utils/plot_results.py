@@ -287,7 +287,7 @@ def plot(base_dir: str, save: bool = False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dir", default="checkpoints/sweep_final")
+    parser.add_argument("--dir", default="checkpoints/sweep_v2")
     parser.add_argument("--save", action="store_true")
     args = parser.parse_args()
     summarize(args.dir)

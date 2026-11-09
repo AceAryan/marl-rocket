@@ -137,6 +137,16 @@ def evaluate(agents, env, n_eval: int = 50, seed: int = EVAL_SEED_BASE, silence:
     }
 
 
+def _snapshot(agents):
+    return [([p.copy() for p in a.q_net.params], [p.copy() for p in a.msg_net.params]) for a in agents]
+
+
+def _restore(agents, snap):
+    for a, (q, m) in zip(agents, snap):
+        a.q_net.params = [p.copy() for p in q]
+        a.msg_net.params = [p.copy() for p in m]
+
+
 def train(
     setting: str = "B",
     n_episodes: int = 4000,
@@ -148,7 +158,7 @@ def train(
     seed: int = 42,
     log_every: int = 100,
     eval_every: int = 250,
-    n_eval_episodes: int = 50,
+    n_eval_episodes: int = 100,
     n_final_eval: int = 200,
     explore_frac: float = 0.1,
     train_every: int = 2,
@@ -202,6 +212,7 @@ def train(
     }
 
     run_dir = save_dir
+    best = None   # (validation score, episode, network snapshot)
     t0 = time.time()
     total_steps = 0
     for ep in range(1, n_episodes + 1):
@@ -268,6 +279,10 @@ def train(
             metrics = evaluate(agents, eval_env, n_eval=n_eval_episodes, fixed=fixed)
             history["eval_episode"].append(ep)
             history["eval"].append(metrics)
+            # Model selection on the validation episodes: keep the best snapshot
+            score = (metrics["goal_rate"], metrics["return_mean"])
+            if best is None or score > best[0]:
+                best = (score, ep, _snapshot(agents))
             if verbose:
                 print(
                     f"[{setting} obs={obs_frac} d={comm_delay} s={seed}] Eval {ep:5d} | "
@@ -276,8 +291,12 @@ def train(
                     flush=True,
                 )
 
-    # Final, larger evaluation on held-out seeds (disjoint from periodic evals)
+    # Final, larger evaluation on held-out seeds (disjoint from the validation
+    # episodes used for model selection). The last policy is recorded too.
     final_seed = EVAL_SEED_BASE + 100_000
+    history["final_eval_last"] = evaluate(agents, eval_env, n_eval=n_final_eval, seed=final_seed, fixed=fixed)
+    _restore(agents, best[2])
+    history["best_episode"] = best[1]
     history["final_eval"] = evaluate(agents, eval_env, n_eval=n_final_eval, seed=final_seed, fixed=fixed)
     if uses_comm:
         history["final_eval_silenced"] = evaluate(
@@ -316,7 +335,7 @@ if __name__ == "__main__":
     parser.add_argument("--render", action="store_true")
     parser.add_argument("--log_every", type=int, default=100)
     parser.add_argument("--eval_every", type=int, default=250)
-    parser.add_argument("--n_eval_episodes", type=int, default=50)
+    parser.add_argument("--n_eval_episodes", type=int, default=100)
     parser.add_argument("--n_final_eval", type=int, default=200)
     parser.add_argument("--explore_frac", type=float, default=0.1)
     parser.add_argument("--train_every", type=int, default=2)

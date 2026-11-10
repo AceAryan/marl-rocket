@@ -23,16 +23,17 @@ import numpy as np
 from utils.plot_results import load_histories, group_runs, _ci95, welch_p
 
 PARTIAL = 0.15
+LOW = 0.1   # lowest observation radius, where shared sightings matter most
 # One encoding everywhere: gray = no communication, blue = learned sender,
 # orange = fixed schedule, aqua = third series where needed.
 GRAY, BLUE, ORANGE, AQUA = "#52514e", "#2a78d6", "#eb6834", "#1baf7a"
-LEARNED_BUDGET = [("A", 0), ("D5", 5), ("D10", 10), ("D", 20), ("D50", 50), ("B", "inf")]
-FIXED_BUDGET = [("A", 0), ("F5", 5), ("F10", 10), ("F20", 20), ("F50", 50), ("Finf", "inf")]
+LEARNED_BUDGET = [("A", 0), ("D2", 2), ("D5", 5), ("D10", 10), ("D", 20), ("B", "inf")]
+FIXED_BUDGET = [("A", 0), ("F2", 2), ("F5", 5), ("F10", 10), ("F20", 20), ("Finf", "inf")]
 LABELS = {
     "A": "A: no communication", "B": "B: learned, unlimited", "C": "C: learned, every 5 steps",
-    "D5": "D5: learned, budget 5", "D10": "D10: learned, budget 10", "D": "D: learned, budget 20",
-    "D50": "D50: learned, budget 50", "F5": "F5: fixed, every 40 steps", "F10": "F10: fixed, every 20 steps",
-    "F20": "F20: fixed, every 10 steps", "F50": "F50: fixed, every 4 steps", "Finf": "Finf: fixed, every step",
+    "D2": "D2: learned, budget 2", "D5": "D5: learned, budget 5", "D10": "D10: learned, budget 10",
+    "D": "D: learned, budget 20", "F2": "F2: fixed, every 40 steps", "F5": "F5: fixed, every 16 steps",
+    "F10": "F10: fixed, every 8 steps", "F20": "F20: fixed, every 4 steps", "Finf": "Finf: fixed, every step",
 }
 
 
@@ -86,26 +87,30 @@ def _series(ax, xs, cells, color, marker, label, ls="-"):
                 label=label, markeredgecolor="white", markeredgewidth=1.2)
 
 
-def _a_line(ax, groups, rho, xmax):
+def _a_line(ax, groups, rho, xmax, ls="--", suffix=""):
     c = cell(groups, (rho, 0, "A"))
     if c:
-        ax.axhline(c[0], color=GRAY, ls="--", lw=1.5, label=f"A: no communication ({c[0]:.0f}%)")
+        ax.axhline(c[0], color=GRAY, ls=ls, lw=1.5, label=f"A: no communication{suffix} ({c[0]:.0f}%)")
         ax.axhspan(c[0] - c[1], c[0] + c[1], color=GRAY, alpha=0.08, lw=0)
 
 
 def fig_budget(plt, groups, out):
     fig, ax = plt.subplots(figsize=(7.5, 4.6))
     xs = range(len(LEARNED_BUDGET))
-    _a_line(ax, groups, PARTIAL, len(xs))
+    _a_line(ax, groups, PARTIAL, len(xs), suffix=f", rho={PARTIAL}")
     _series(ax, xs, [cell(groups, (PARTIAL, 0, s)) for s, _ in FIXED_BUDGET], ORANGE, "s",
             f"Fixed schedule (rho={PARTIAL})")
     _series(ax, xs, [cell(groups, (PARTIAL, 0, s)) for s, _ in LEARNED_BUDGET], BLUE, "o",
             f"Learned sender (rho={PARTIAL})")
     _series(ax, xs, [cell(groups, (1.0, 0, s)) for s, _ in LEARNED_BUDGET], AQUA, "^",
             "Learned sender (full view)", ls=":")
+    low = [cell(groups, (LOW, 0, s)) for s, _ in FIXED_BUDGET]
+    if sum(c is not None for c in low) >= 2:
+        _a_line(ax, groups, LOW, len(xs), ls=":", suffix=f", rho={LOW}")
+        _series(ax, xs, low, ORANGE, "D", f"Fixed schedule (rho={LOW})", ls="--")
     ax.set_xticks(list(xs), [str(b) for _, b in LEARNED_BUDGET])
     _style(ax, "RQ1  Goal rate vs message budget",
-           "Message allowance per agent per 200-step episode (fixed: 200 / period)")
+           "Message allowance per agent per 80-step episode (fixed: 80 / period)")
     ax.legend(frameon=False, fontsize=9, loc="lower right")
     fig.tight_layout()
     fig.savefig(out, dpi=200)
@@ -229,10 +234,10 @@ def fig_send_timing(plt, base, before, out, setting="D", fixed="F20"):
     series = [s for s in series if s[1]]
     if not series:
         return None
-    bins = np.arange(0, 201, 10)
+    bins = np.arange(0, 81, 5)
     fig, ax = plt.subplots(figsize=(7.5, 4.2))
     rows = []
-    width = 10 / (len(series) + 0.5)
+    width = 5 / (len(series) + 0.5)
     for k, (label, dirs, color, legacy) in enumerate(series):
         steps, vis = send_timing(dirs, legacy=legacy)
         if len(steps) == 0:
@@ -280,7 +285,7 @@ def write_results_md(groups, base, timing_rows=None):
              "Goal rate = share of "
              "episodes with an assisted goal. Δ and p: Welch t-test against A at the same "
              "observation radius (* p<0.05, ** p<0.01). Steps to goal = mean episode length "
-             "(200 = no goal). *Goal % silenced* = the same policy evaluated with the channel "
+             "(80 = no goal). *Goal % silenced* = the same policy evaluated with the channel "
              "muted (how much it relies on messages).", ""]
 
     def table(title, keys, show_delay=False):
@@ -291,8 +296,9 @@ def write_results_md(groups, base, timing_rows=None):
                      if show_delay and k[2] != "A" else None) for k in keys]
         lines.extend([f"## {title}", "", HEADER] + rows + [""])
 
-    order = ["A", "D5", "D10", "D", "D50", "C", "B", "F5", "F10", "F20", "F50", "Finf"]
+    order = ["A", "D2", "D5", "D10", "D", "C", "B", "F2", "F5", "F10", "F20", "Finf"]
     table(f"RQ1: message budget (rho = {PARTIAL})", [(PARTIAL, 0, s) for s in order])
+    table(f"RQ1: message budget (rho = {LOW})", [(LOW, 0, s) for s in order])
     table("RQ1: message budget (full view, rho = 1.0)", [(1.0, 0, s) for s in order])
     delays = sorted({k[1] for k in groups if k[0] == PARTIAL})
     table(f"RQ2: message delay (rho = {PARTIAL})",
@@ -347,7 +353,7 @@ def build_report(base, before=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dir", default="checkpoints/sweep_v2")
+    parser.add_argument("--dir", default="checkpoints/sweep_v3")
     parser.add_argument("--before", default="checkpoints/sweep_assist",
                         help="earlier sweep shown as 'before fix' in the send-timing figure")
     args = parser.parse_args()

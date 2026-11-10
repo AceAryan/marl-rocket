@@ -20,26 +20,27 @@ import json
 import random
 import time
 import numpy as np
-from env.rocket_env import RocketEnv, N_ACTIONS, N_MESSAGES, FIELD_D, OBS_SLICES
+from env.rocket_env import RocketEnv, N_ACTIONS, N_MESSAGES, FIELD_D, OBS_SLICES, MAX_STEPS
 
 BALL_VIS = OBS_SLICES["ball_vis"].start
 from agents.dqn_agent import DQNAgent
 
-# Communication presets. A-D follow the proposal's Table 1; D5/D10/D50 add
+# Communication presets. A-D follow the proposal's Table 1; D2/D5/D10 add
 # budget points for the saturation curve (RQ1).
 COMM_SETTINGS = {
     "A":   dict(comm_budget=0,    comm_every=1),  # no communication
+    "D2":  dict(comm_budget=2,    comm_every=1),
     "D5":  dict(comm_budget=5,    comm_every=1),
     "D10": dict(comm_budget=10,   comm_every=1),
     "D":   dict(comm_budget=20,   comm_every=1),  # fixed budget (proposal D)
-    "D50": dict(comm_budget=50,   comm_every=1),
     "C":   dict(comm_budget=None, comm_every=5),  # unlimited, every 5 steps
     "B":   dict(comm_budget=None, comm_every=1),  # unlimited, every step
 }
 # Fixed-schedule senders (no learned message head): each agent broadcasts its
-# sighting every k steps, i.e. 200/k messages per 200-step episode. These
-# separate the value of the information from the cost of learning when to send.
-FIXED_SENDERS = {"F5": 40, "F10": 20, "F20": 10, "F50": 4, "Finf": 1}
+# sighting every k steps, i.e. 80/k messages per 80-step episode, matching the
+# learned budgets. These separate the value of the information from the cost
+# of learning when to send.
+FIXED_SENDERS = {"F2": 40, "F5": 16, "F10": 8, "F20": 4, "Finf": 1}
 for _name, _k in FIXED_SENDERS.items():
     COMM_SETTINGS[_name] = dict(comm_budget=None, comm_every=_k)
 
@@ -51,7 +52,7 @@ def make_env(
     setting: str,
     obs_frac: float = 1.0,
     comm_delay: int = 0,
-    max_steps: int = 200,
+    max_steps: int = MAX_STEPS,
     curriculum: str = "full",
     opponent: bool = False,
 ):
@@ -152,7 +153,7 @@ def train(
     n_episodes: int = 4000,
     obs_frac: float = 1.0,
     comm_delay: int = 0,
-    max_steps: int = 200,
+    max_steps: int = MAX_STEPS,
     save_dir: str = "checkpoints/manual",
     render: bool = False,
     seed: int = 42,
@@ -329,7 +330,7 @@ if __name__ == "__main__":
     parser.add_argument("--episodes", type=int, default=4000)
     parser.add_argument("--obs_frac", type=float, default=1.0)
     parser.add_argument("--comm_delay", type=int, default=0)
-    parser.add_argument("--max_steps", type=int, default=200)
+    parser.add_argument("--max_steps", type=int, default=MAX_STEPS)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--save_dir", default=None)
     parser.add_argument("--render", action="store_true")

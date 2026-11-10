@@ -74,6 +74,7 @@ OBS_SLICES = {
     "assist_rule": slice(32, 33),      # this episode requires assisted goals
 }
 OBS_DIM = 33
+MAX_STEPS = 80           # short, match-clock episodes: speed (and so information) matters
 
 
 def _dist(a, b):
@@ -119,7 +120,7 @@ class RocketEnv(gym.Env):
         comm_budget: Optional[int] = None,
         comm_delay: int = 0,
         comm_every: int = 1,
-        max_steps: int = 200,
+        max_steps: int = MAX_STEPS,
         curriculum: str = "full",
         opponent: bool = True,
         assist_required: bool = True,

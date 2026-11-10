@@ -78,10 +78,10 @@ def welch_p(a, b):
     return float(t_sf2(t, df))
 
 # x-axis order of the saturation curve: (setting, budget label)
-BUDGET_ORDER = [("A", "0"), ("D5", "5"), ("D10", "10"), ("D", "20"), ("D50", "50"), ("B", "inf")]
-SETTING_ORDER = ["A", "D5", "D10", "D", "D50", "C", "B", "F5", "F10", "F20", "F50", "Finf"]
+BUDGET_ORDER = [("A", "0"), ("D2", "2"), ("D5", "5"), ("D10", "10"), ("D", "20"), ("B", "inf")]
+SETTING_ORDER = ["A", "D2", "D5", "D10", "D", "C", "B", "F2", "F5", "F10", "F20", "Finf"]
 # Fixed-schedule senders on the same budget axis (A = 0 messages)
-FIXED_ORDER = [("A", "0"), ("F5", "5"), ("F10", "10"), ("F20", "20"), ("F50", "50"), ("Finf", "inf")]
+FIXED_ORDER = [("A", "0"), ("F2", "2"), ("F5", "5"), ("F10", "10"), ("F20", "20"), ("Finf", "inf")]
 
 
 def load_histories(base_dir: str):
@@ -287,7 +287,7 @@ def plot(base_dir: str, save: bool = False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dir", default="checkpoints/sweep_v2")
+    parser.add_argument("--dir", default="checkpoints/sweep_v3")
     parser.add_argument("--save", action="store_true")
     args = parser.parse_args()
     summarize(args.dir)

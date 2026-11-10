@@ -23,6 +23,7 @@ import numpy as np
 from env.rocket_env import RocketEnv, N_ACTIONS, N_MESSAGES, FIELD_D, OBS_SLICES, MAX_STEPS
 
 BALL_VIS = OBS_SLICES["ball_vis"].start
+NO_MSG = OBS_SLICES["msg_token"].start   # one-hot slot of the "no message" token
 from agents.dqn_agent import DQNAgent
 
 # Communication presets. A-D follow the proposal's Table 1; D2/D5/D10 add
@@ -85,6 +86,29 @@ def choose_messages(agents, obs_list, can_send, fixed: bool, silence: bool = Fal
         for agent, o, d in zip(agents, obs_list, decide)
     ]
     return messages, decide
+
+
+def mask_message(obs):
+    """The receiver's observation as if it held no message (the env's "no
+    message" encoding): the counterfactual for the value of information."""
+    o = obs.copy()
+    for key in ("msg_token", "msg_ball", "msg_ball_vis", "msg_sender"):
+        o[OBS_SLICES[key]] = 0.0
+    o[NO_MSG] = 1.0
+    o[OBS_SLICES["msg_age"]] = 1.0
+    return o
+
+
+def message_value(receiver, obs) -> float:
+    """Value of the message the receiver currently holds, judged by the
+    receiver's own Q-function: Q(o, a*) - Q(o, a_cf), where a* is its greedy
+    action with the message and a_cf the action it would take without it.
+    Zero when the message does not change its decision (or none is held)."""
+    if obs[NO_MSG] > 0:
+        return 0.0
+    q = receiver.q_net(obs)
+    a_cf = int(np.argmax(receiver.q_net(mask_message(obs))))
+    return float(q.max() - q[a_cf])
 
 
 def evaluate(agents, env, n_eval: int = 50, seed: int = EVAL_SEED_BASE, silence: bool = False,
@@ -165,8 +189,18 @@ def train(
     train_every: int = 2,
     assist_curriculum: float = 0.0,
     opponent: bool = False,
+    msg_credit: str = "voi",
+    msg_cost: float = 0.05,
     verbose: bool = True,
 ):
+    """msg_credit: how the learned message head is rewarded.
+      "voi"  - value of information: each step the teammate holds my message,
+               I am credited with how much it improves the teammate's decision
+               (message_value, in the teammate's Q units), minus msg_cost per
+               message sent. Direct, low-variance credit for *when* to send.
+      "team" - the shared team reward (the original IQL-Comm credit)."""
+    if msg_credit not in ("voi", "team"):
+        raise ValueError("msg_credit must be 'voi' or 'team'")
     if n_episodes <= 0 or max_steps <= 0:
         raise ValueError("n_episodes and max_steps must be positive")
     if log_every <= 0 or eval_every <= 0 or n_eval_episodes <= 0 or train_every <= 0:
@@ -204,6 +238,8 @@ def train(
         "max_steps": max_steps,
         "assist_curriculum": assist_curriculum,
         "opponent": opponent,
+        "msg_credit": msg_credit if learns_msgs else None,
+        "msg_cost": msg_cost if learns_msgs and msg_credit == "voi" else None,
         "episode_return": [],
         "score_team": [],
         "score_opp": [],
@@ -241,10 +277,21 @@ def train(
             r = reward * REWARD_SCALE
             total_steps += 1
 
+            if learns_msgs:
+                if msg_credit == "voi":
+                    # Agent i is credited with the value of the message agent j holds
+                    # (with 2 agents, j's message always comes from i), minus the
+                    # cost of sending. A message is sent only at a decision point,
+                    # so messages[i] != 0 means agent i sent one this step.
+                    msg_r = [message_value(agents[1 - i], next_obs_list[1 - i])
+                             - (msg_cost if messages[i] else 0.0) for i in range(2)]
+                else:
+                    msg_r = [r, r]
+
             for i, agent in enumerate(agents):
                 agent.store(obs_list[i], actions[i], r, next_obs_list[i], terminated, truncated)
                 if learns_msgs:
-                    agent.message_reward(r)
+                    agent.message_reward(msg_r[i])
                 if total_steps % train_every == 0:
                     agent.update()
                     if learns_msgs:
@@ -342,6 +389,8 @@ if __name__ == "__main__":
     parser.add_argument("--train_every", type=int, default=2)
     parser.add_argument("--assist_curriculum", type=float, default=0.0)
     parser.add_argument("--opponent", action="store_true", help="add the scripted keeper")
+    parser.add_argument("--msg_credit", default="voi", choices=["voi", "team"])
+    parser.add_argument("--msg_cost", type=float, default=0.05)
     args = parser.parse_args()
 
     train(
@@ -364,4 +413,6 @@ if __name__ == "__main__":
         train_every=args.train_every,
         assist_curriculum=args.assist_curriculum,
         opponent=args.opponent,
+        msg_credit=args.msg_credit,
+        msg_cost=args.msg_cost,
     )

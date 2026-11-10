@@ -72,8 +72,10 @@ OBS_SLICES = {
     "assist_me": slice(30, 31),        # teammate touched recently: my goal would count
     "assist_mate": slice(31, 32),      # I touched recently: teammate's goal would count
     "assist_rule": slice(32, 33),      # this episode requires assisted goals
+    "send_age": slice(33, 34),         # steps since my last send / MSG_TTL, capped at 1: whether
+                                       # the teammate's copy of my last message has expired
 }
-OBS_DIM = 33
+OBS_DIM = 34
 MAX_STEPS = 80           # short, match-clock episodes: speed (and so information) matters
 
 
@@ -292,6 +294,7 @@ class RocketEnv(gym.Env):
         self._last_toucher = None
         self._msg_step = [None] * self.n_agents            # step of last delivery
         self._msgs_sent = [0] * self.n_agents
+        self._last_send = [None] * self.n_agents           # step of each agent's last send
 
     def _opponent_move(self):
         """Scripted keeper confined to y >= OPP_MIN_Y: chase the ball from above
@@ -389,6 +392,7 @@ class RocketEnv(gym.Env):
             if token == 0 or not allowed[i]:
                 continue
             self._msgs_sent[i] += 1
+            self._last_send[i] = self._step_count
             pos, vel, vis = self._ball_view(i)
             payload = np.concatenate([pos, vel, [vis], _norm_pos(self._agent_pos[i])]).astype(np.float32)
             for j in range(self.n_agents):
@@ -465,6 +469,10 @@ class RocketEnv(gym.Env):
                     (self.comm_budget - self._msgs_sent[i]) / max(self.comm_budget, 1)
                 )
             o[OBS_SLICES["time"]] = time_left
+            if self._last_send[i] is None:
+                o[OBS_SLICES["send_age"]] = 1.0
+            else:
+                o[OBS_SLICES["send_age"]] = min(self._step_count - self._last_send[i], MSG_TTL) / MSG_TTL
             if self.assist_required:
                 o[OBS_SLICES["assist_rule"]] = 1.0
                 o[OBS_SLICES["assist_me"]] = float(self._assisted(i))

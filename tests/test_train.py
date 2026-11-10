@@ -6,10 +6,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import tempfile
 import numpy as np
 
-from env.rocket_env import N_ACTIONS, N_MESSAGES, OBS_DIM
+from env.rocket_env import N_ACTIONS, N_MESSAGES, OBS_DIM, OBS_SLICES, RocketEnv
 from agents.dqn_agent import DQNAgent
 from experiments.train import (
-    BALL_VIS, FIXED_SENDERS, choose_messages, decision_points, make_env, train,
+    BALL_VIS, FIXED_SENDERS, NO_MSG, choose_messages, decision_points, make_env, mask_message,
+    message_value, train,
 )
 
 
@@ -84,6 +85,51 @@ def test_fixed_sender_sends_every_k_steps():
         assert all(b - a == k for a, b in zip(sent_steps, sent_steps[1:])), setting
 
 
+def test_mask_message_matches_env_no_message_encoding():
+    env = RocketEnv(obs_frac=0.25, opponent=False)
+    obs, _ = env.reset(seed=0)
+    silent = obs[1].copy()                       # holds no message yet
+    obs, *_ = env.step([0, 0], [3, 0])           # agent 0 messages agent 1
+    assert obs[1][NO_MSG] == 0.0
+    masked = mask_message(obs[1])
+    for key in ("msg_token", "msg_ball", "msg_ball_vis", "msg_age", "msg_sender"):
+        assert np.array_equal(masked[OBS_SLICES[key]], silent[OBS_SLICES[key]]), key
+    others = [i for i in range(OBS_DIM) if not any(
+        OBS_SLICES[k].start <= i < OBS_SLICES[k].stop
+        for k in ("msg_token", "msg_ball", "msg_ball_vis", "msg_age", "msg_sender"))]
+    assert np.array_equal(masked[others], obs[1][others])
+
+
+def test_message_value():
+    agent = _agents()[0]
+    o = np.zeros(OBS_DIM, np.float32)
+    o[NO_MSG] = 1.0
+    o[OBS_SLICES["msg_age"]] = 1.0
+    assert message_value(agent, o) == 0.0              # no message held
+    o_msg = o.copy()
+    o_msg[NO_MSG] = 0.0
+    o_msg[OBS_SLICES["msg_token"].start + 2] = 1.0
+    o_msg[OBS_SLICES["msg_ball"]] = [0.5, -0.5, 0.0, 0.0]
+    o_msg[OBS_SLICES["msg_ball_vis"]] = 1.0
+    o_msg[OBS_SLICES["msg_age"]] = 0.0
+    q = agent.q_net(o_msg)
+    a_cf = int(np.argmax(agent.q_net(o)))
+    v = message_value(agent, o_msg)
+    assert v >= 0.0 and np.isclose(v, q.max() - q[a_cf])
+
+
+def test_send_age_observed():
+    from env.rocket_env import MSG_TTL
+    env = RocketEnv()
+    obs, _ = env.reset(seed=0)
+    assert obs[0][OBS_SLICES["send_age"]][0] == 1.0     # never sent
+    obs, *_ = env.step([0, 0], [1, 0])
+    assert obs[0][OBS_SLICES["send_age"]][0] == 0.0 and obs[1][OBS_SLICES["send_age"]][0] == 1.0
+    for _ in range(3):
+        obs, *_ = env.step([0, 0], [0, 0])
+    assert np.isclose(obs[0][OBS_SLICES["send_age"]][0], 3 / MSG_TTL)
+
+
 def test_train_smoke_all_kinds():
     with tempfile.TemporaryDirectory() as d:
         for setting in ("A", "D", "B", "F20"):
@@ -96,6 +142,10 @@ def test_train_smoke_all_kinds():
             assert h["event_triggered"] == (setting in ("D", "B"))
             assert ("final_eval_silenced" in h) == (setting != "A")
             assert os.path.exists(os.path.join(d, setting, "history.json"))
+        h = train(setting="D5", n_episodes=3, obs_frac=0.15, max_steps=40, msg_credit="team",
+                  save_dir=os.path.join(d, "team"), eval_every=3, n_eval_episodes=2,
+                  n_final_eval=2, verbose=False, seed=0)
+        assert h["msg_credit"] == "team" and h["msg_cost"] is None
 
 
 if __name__ == "__main__":

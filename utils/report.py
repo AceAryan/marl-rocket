@@ -25,15 +25,18 @@ from utils.plot_results import load_histories, group_runs, _ci95, welch_p
 PARTIAL = 0.15
 LOW = 0.1   # lowest observation radius, where shared sightings matter most
 # One encoding everywhere: gray = no communication, blue = learned sender,
-# orange = fixed schedule, aqua = third series where needed.
+# aqua = send-on-sight rule, orange = fixed schedule.
 GRAY, BLUE, ORANGE, AQUA = "#52514e", "#2a78d6", "#eb6834", "#1baf7a"
 LEARNED_BUDGET = [("A", 0), ("D2", 2), ("D5", 5), ("D10", 10), ("D", 20), ("B", "inf")]
 FIXED_BUDGET = [("A", 0), ("F2", 2), ("F5", 5), ("F10", 10), ("F20", 20), ("Finf", "inf")]
+RULE_BUDGET = [("A", 0), ("R2", 2), ("R5", 5), ("R10", 10), ("R20", 20), ("Rinf", "inf")]
 LABELS = {
     "A": "A: no communication", "B": "B: learned, unlimited", "C": "C: learned, every 5 steps",
     "D2": "D2: learned, budget 2", "D5": "D5: learned, budget 5", "D10": "D10: learned, budget 10",
     "D": "D: learned, budget 20", "F2": "F2: fixed, every 40 steps", "F5": "F5: fixed, every 16 steps",
     "F10": "F10: fixed, every 8 steps", "F20": "F20: fixed, every 4 steps", "Finf": "Finf: fixed, every step",
+    "R2": "R2: rule, budget 2", "R5": "R5: rule, budget 5", "R10": "R10: rule, budget 10",
+    "R20": "R20: rule, budget 20", "Rinf": "Rinf: rule, unlimited",
 }
 
 
@@ -95,36 +98,37 @@ def _a_line(ax, groups, rho, xmax, ls="--", suffix=""):
 
 
 def fig_budget(plt, groups, out):
-    fig, ax = plt.subplots(figsize=(7.5, 4.6))
+    rhos = [r for r in (PARTIAL, LOW) if (r, 0, "A") in groups]
+    if not rhos:
+        return
+    fig, axes = plt.subplots(1, len(rhos), figsize=(6.2 * len(rhos), 4.6), sharey=True, squeeze=False)
     xs = range(len(LEARNED_BUDGET))
-    _a_line(ax, groups, PARTIAL, len(xs), suffix=f", rho={PARTIAL}")
-    _series(ax, xs, [cell(groups, (PARTIAL, 0, s)) for s, _ in FIXED_BUDGET], ORANGE, "s",
-            f"Fixed schedule (rho={PARTIAL})")
-    _series(ax, xs, [cell(groups, (PARTIAL, 0, s)) for s, _ in LEARNED_BUDGET], BLUE, "o",
-            f"Learned sender (rho={PARTIAL})")
-    _series(ax, xs, [cell(groups, (1.0, 0, s)) for s, _ in LEARNED_BUDGET], AQUA, "^",
-            "Learned sender (full view)", ls=":")
-    low = [cell(groups, (LOW, 0, s)) for s, _ in FIXED_BUDGET]
-    if sum(c is not None for c in low) >= 2:
-        _a_line(ax, groups, LOW, len(xs), ls=":", suffix=f", rho={LOW}")
-        _series(ax, xs, low, ORANGE, "D", f"Fixed schedule (rho={LOW})", ls="--")
-    ax.set_xticks(list(xs), [str(b) for _, b in LEARNED_BUDGET])
-    _style(ax, "RQ1  Goal rate vs message budget",
-           "Message allowance per agent per 80-step episode (fixed: 80 / period)")
-    ax.legend(frameon=False, fontsize=9, loc="lower right")
+    for ax, rho in zip(axes[0], rhos):
+        _a_line(ax, groups, rho, len(xs))
+        for budget, color, marker, label in ((LEARNED_BUDGET, BLUE, "o", "Learned sender"),
+                                             (RULE_BUDGET, AQUA, "^", "Rule: send on sight"),
+                                             (FIXED_BUDGET, ORANGE, "s", "Fixed schedule")):
+            _series(ax, xs, [cell(groups, (rho, 0, s)) for s, _ in budget], color, marker, label)
+        ax.set_xticks(list(xs), [str(b) for _, b in LEARNED_BUDGET])
+        _style(ax, f"RQ1  Goal rate vs message budget (rho={rho})",
+               "Messages per agent per 80-step episode (fixed: 80 / period)",
+               "Final goal rate (%)" if ax is axes[0][0] else "")
+        ax.legend(frameon=False, fontsize=9, loc="lower right")
     fig.tight_layout()
     fig.savefig(out, dpi=200)
     plt.close(fig)
 
 
 def fig_delay(plt, groups, out):
-    delays = sorted({k[1] for k in groups if k[0] == PARTIAL and k[2] in ("B", "Finf")})
+    delays = sorted({k[1] for k in groups if k[0] == PARTIAL and k[2] in ("B", "Rinf", "Finf")})
     if not delays:
         return
     fig, ax = plt.subplots(figsize=(6.5, 4.4))
     _a_line(ax, groups, PARTIAL, len(delays))
     _series(ax, delays, [cell(groups, (PARTIAL, d, "Finf")) for d in delays], ORANGE, "s",
             "Fixed, every step (Finf)")
+    _series(ax, delays, [cell(groups, (PARTIAL, d, "Rinf")) for d in delays], AQUA, "^",
+            "Rule, unlimited (Rinf)")
     _series(ax, delays, [cell(groups, (PARTIAL, d, "B")) for d in delays], BLUE, "o",
             "Learned, unlimited (B)")
     ax.set_xticks(delays)
@@ -143,6 +147,7 @@ def fig_obs(plt, groups, out):
     xs = range(len(rhos))
     _series(ax, xs, [cell(groups, (r, 0, "A")) for r in rhos], GRAY, "D", "A: no communication", ls="--")
     _series(ax, xs, [cell(groups, (r, 0, "Finf")) for r in rhos], ORANGE, "s", "Fixed, every step (Finf)")
+    _series(ax, xs, [cell(groups, (r, 0, "Rinf")) for r in rhos], AQUA, "^", "Rule, unlimited (Rinf)")
     _series(ax, xs, [cell(groups, (r, 0, "B")) for r in rhos], BLUE, "o", "Learned, unlimited (B)")
     ax.set_xticks(list(xs), [f"{r:g}" for r in rhos])
     _style(ax, "RQ3  Goal rate vs observation radius",
@@ -164,8 +169,8 @@ def _curve(ax, runs, color, label, ls="-"):
 
 
 def fig_curves(plt, groups, out):
-    panels = [("Learned sender", [("A", GRAY, "--"), ("D", BLUE, "-"), ("B", AQUA, "-")]),
-              ("Fixed schedule", [("A", GRAY, "--"), ("F20", ORANGE, "-"), ("Finf", AQUA, "-")])]
+    panels = [("Budget 5", [("A", GRAY, "--"), ("D5", BLUE, "-"), ("R5", AQUA, "-"), ("F5", ORANGE, "-")]),
+              ("Unlimited", [("A", GRAY, "--"), ("B", BLUE, "-"), ("Rinf", AQUA, "-"), ("Finf", ORANGE, "-")])]
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), sharey=True)
     for ax, (title, series) in zip(axes, panels):
         for s, color, ls in series:
@@ -185,14 +190,15 @@ def send_timing(run_dirs, n_episodes=40, seed=30_000, legacy=False):
     the sender saw the ball. run_dirs: list of (setting, rho, seed_dir).
     legacy=True replays the pre-fix rule (a learned decision at every step
     the agent may send), for checkpoints trained before event triggering."""
-    from experiments.train import make_env, choose_messages, FIXED_SENDERS, BALL_VIS
+    from experiments.train import make_env, choose_messages, sender_kind, BALL_VIS, HEAD_MESSAGES
     from agents.dqn_agent import DQNAgent
     from env.rocket_env import N_ACTIONS, N_MESSAGES
     steps, visible = [], []
     for setting, rho, path in run_dirs:
         env = make_env(setting, rho)
         agents = [DQNAgent(obs_dim=env.observation_space.shape[0], n_actions=N_ACTIONS,
-                           n_messages=N_MESSAGES, agent_id=i) for i in range(2)]
+                           n_messages=N_MESSAGES if legacy else HEAD_MESSAGES, agent_id=i)
+                  for i in range(2)]
         for a in agents:
             a.load(path)
             a.eps = 0.0
@@ -205,7 +211,7 @@ def send_timing(run_dirs, n_episodes=40, seed=30_000, legacy=False):
                     msgs = [a.select_message(o, budget_exhausted=not c)
                             for a, o, c in zip(agents, obs, info["can_send"])]
                 else:
-                    msgs, _ = choose_messages(agents, obs, info["can_send"], setting in FIXED_SENDERS)
+                    msgs, _ = choose_messages(agents, obs, info["can_send"], sender_kind(setting))
                 for i, m in enumerate(msgs):
                     if m and info["can_send"][i]:
                         steps.append(t)
@@ -225,11 +231,12 @@ def _seed_dirs(base, setting, rho=PARTIAL):
             if os.path.exists(os.path.join(d, s, "agent0_msg.npz"))]
 
 
-def fig_send_timing(plt, base, before, out, setting="D", fixed="F20"):
+def fig_send_timing(plt, base, before, out, setting="D5", fixed="F5"):
     series = []
     if before:
         series.append((f"Learned {setting}, before fix", _seed_dirs(before, setting), GRAY, True))
-    series.append((f"Learned {setting}, event-triggered", _seed_dirs(base, setting), BLUE, False))
+    series.append((f"Learned {setting}", _seed_dirs(base, setting), BLUE, False))
+    series.append((f"Rule R{setting[1:]}", _seed_dirs(base, "R" + setting[1:]), AQUA, False))
     series.append((f"Fixed {fixed}", _seed_dirs(base, fixed), ORANGE, False))
     series = [s for s in series if s[1]]
     if not series:
@@ -296,22 +303,23 @@ def write_results_md(groups, base, timing_rows=None):
                      if show_delay and k[2] != "A" else None) for k in keys]
         lines.extend([f"## {title}", "", HEADER] + rows + [""])
 
-    order = ["A", "D2", "D5", "D10", "D", "C", "B", "F2", "F5", "F10", "F20", "Finf"]
+    order = ["A", "D2", "D5", "D10", "D", "C", "B", "R2", "R5", "R10", "R20", "Rinf",
+             "F2", "F5", "F10", "F20", "Finf"]
     table(f"RQ1: message budget (rho = {PARTIAL})", [(PARTIAL, 0, s) for s in order])
     table(f"RQ1: message budget (rho = {LOW})", [(LOW, 0, s) for s in order])
     table("RQ1: message budget (full view, rho = 1.0)", [(1.0, 0, s) for s in order])
     delays = sorted({k[1] for k in groups if k[0] == PARTIAL})
     table(f"RQ2: message delay (rho = {PARTIAL})",
-          [(PARTIAL, 0, "A")] + [(PARTIAL, d, s) for s in ("B", "Finf") for d in delays],
+          [(PARTIAL, 0, "A")] + [(PARTIAL, d, s) for s in ("B", "Rinf", "Finf") for d in delays],
           show_delay=True)
     rhos = sorted({k[0] for k in groups if k[1] == 0 and k[2] == "A"}, reverse=True)
     if len(rhos) > 1:
         lines.extend(["## RQ3: observability", "",
-                      "| rho | " + " | ".join(LABELS[s] for s in ("A", "B", "Finf")) + " |",
-                      "|---|---|---|---|"])
+                      "| rho | " + " | ".join(LABELS[s] for s in ("A", "B", "Rinf", "Finf")) + " |",
+                      "|---|---|---|---|---|"])
         for r in rhos:
             cells = []
-            for s in ("A", "B", "Finf"):
+            for s in ("A", "B", "Rinf", "Finf"):
                 c = cell(groups, (r, 0, s))
                 p = p_vs_a(groups, (r, 0, s))
                 star = "" if np.isnan(p) else (" **" if p < 0.01 else " *" if p < 0.05 else "")

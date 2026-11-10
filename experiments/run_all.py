@@ -22,39 +22,36 @@ import time
 import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from experiments.train import train, COMM_SETTINGS, FIXED_SENDERS
+from experiments.train import train, FIXED_SENDERS, RULE_SENDERS
 from env.rocket_env import MAX_STEPS
 from utils.plot_results import summarize, plot
 from utils.report import build_report
 
 DEFAULT_SEEDS = tuple(range(10))
 
-PARTIAL_RHO = 0.15   # partial observability level for the budget and delay sweeps
+PARTIAL_RHO = 0.15   # main partial observability level (budget and delay sweeps)
+LOW_RHO = 0.1        # lowest observation radius, where shared sightings matter most
+
+LEARNED = ["A", "D2", "D5", "D10", "D", "C", "B"]   # A plus the learned-sender settings
+UNLIMITED = ["B", "Rinf", "Finf"]                   # learned / rule / fixed sender, no budget
 
 # (setting, obs_frac, comm_delay) triples per sweep
 SWEEPS = {
-    # RQ1: budget sweep 0 -> inf, full vs partial observability
-    "budget": [(s, rho, 0) for rho in (1.0, PARTIAL_RHO) for s in COMM_SETTINGS],
-    # RQ2: delay on unlimited communication (partial obs, where messages carry information)
-    "delay": [("A", PARTIAL_RHO, 0)] + [("B", PARTIAL_RHO, d) for d in (0, 1, 2, 5)],
+    # RQ1: message budget, for each kind of sender, at two observation radii
+    "budget": [(s, rho, 0) for rho in (PARTIAL_RHO, LOW_RHO) for s in LEARNED],
+    "rule": [(s, rho, 0) for rho in (PARTIAL_RHO, LOW_RHO) for s in RULE_SENDERS],
+    "fixed": [(s, rho, 0) for rho in (PARTIAL_RHO, LOW_RHO) for s in FIXED_SENDERS],
+    # RQ2: delay on unlimited communication
+    "delay": [("A", PARTIAL_RHO, 0)] + [(s, PARTIAL_RHO, d) for s in UNLIMITED for d in (0, 1, 2, 5)],
     # RQ3: value of communication as observability shrinks
-    "obs": [(s, rho, 0) for rho in (1.0, 0.25, PARTIAL_RHO, 0.1) for s in ("A", "B")],
+    "obs": [(s, rho, 0) for rho in (1.0, 0.25, PARTIAL_RHO, LOW_RHO) for s in ["A"] + UNLIMITED],
 }
-LEARNED = [s for s in COMM_SETTINGS if s not in FIXED_SENDERS]
-SWEEPS["budget"] = [(s, rho, 0) for rho in (1.0, PARTIAL_RHO) for s in LEARNED]
-# Fixed-schedule senders: the same three questions without a learned message head
-SWEEPS["fixed"] = (
-    [(s, PARTIAL_RHO, 0) for s in FIXED_SENDERS]                       # RQ1
-    + [(s, 0.1, 0) for s in FIXED_SENDERS if s != "Finf"]              # RQ1 where sharing matters most
-    + [("Finf", PARTIAL_RHO, d) for d in (1, 2, 5)]                     # RQ2
-    + [("Finf", rho, 0) for rho in (1.0, 0.25, 0.1)]                    # RQ3
-)
-# Pilot of the learned sender (value-of-information credit) vs fixed schedules
-SWEEPS["pilot"] = ([(s, PARTIAL_RHO, 0) for s in ("A", "D2", "D5", "D", "B", "F5", "Finf")]
-                   + [(s, 0.1, 0) for s in ("A", "D5", "B")])
+# Pilot: each kind of sender at a tight and an unlimited budget
+SWEEPS["pilot"] = [(s, rho, 0) for rho in (PARTIAL_RHO, LOW_RHO) for s in ("A", "D5", "B", "R5", "Rinf", "F5", "Finf")]
 # Quick end-to-end check of the pipeline
-SWEEPS["smoke"] = [("A", 1.0, 0), ("B", 1.0, 0), ("A", PARTIAL_RHO, 0), ("D", PARTIAL_RHO, 0), ("B", PARTIAL_RHO, 0)]
-SWEEPS["all"] = list(dict.fromkeys(SWEEPS["budget"] + SWEEPS["delay"] + SWEEPS["obs"] + SWEEPS["fixed"]))
+SWEEPS["smoke"] = [("A", PARTIAL_RHO, 0), ("D", PARTIAL_RHO, 0), ("B", PARTIAL_RHO, 0), ("R5", PARTIAL_RHO, 0), ("F5", PARTIAL_RHO, 0)]
+SWEEPS["all"] = list(dict.fromkeys(
+    SWEEPS["budget"] + SWEEPS["rule"] + SWEEPS["fixed"] + SWEEPS["delay"] + SWEEPS["obs"]))
 
 
 def run_dir(save_dir, setting, obs_frac, comm_delay, seed):
@@ -89,6 +86,7 @@ def run_sweep(
     workers: int = 8,
     msg_credit: str = "voi",
     msg_cost: float = 0.05,
+    msg_handover: float = 0.5,
 ):
     jobs = []
     for setting, obs_frac, comm_delay in SWEEPS[sweep]:
@@ -101,6 +99,7 @@ def run_sweep(
                 n_episodes=episodes, max_steps=max_steps, save_dir=path,
                 eval_every=eval_every, n_eval_episodes=n_eval_episodes,
                 n_final_eval=n_final_eval, msg_credit=msg_credit, msg_cost=msg_cost,
+                msg_handover=msg_handover,
             ))
     total = len(SWEEPS[sweep]) * len(seeds)
     print(f"Sweep '{sweep}': {total} runs, {total - len(jobs)} already done, "
@@ -126,6 +125,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_dir", default="checkpoints/sweep_v3")
     parser.add_argument("--msg_credit", default="voi", choices=["voi", "team"])
     parser.add_argument("--msg_cost", type=float, default=0.05)
+    parser.add_argument("--msg_handover", type=float, default=0.5)
     parser.add_argument("--eval_every", type=int, default=250)
     parser.add_argument("--n_eval_episodes", type=int, default=100)
     parser.add_argument("--n_final_eval", type=int, default=200)
@@ -143,4 +143,5 @@ if __name__ == "__main__":
         workers=args.workers,
         msg_credit=args.msg_credit,
         msg_cost=args.msg_cost,
+        msg_handover=args.msg_handover,
     )

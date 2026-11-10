@@ -20,14 +20,14 @@ import json
 import random
 import time
 import numpy as np
-from env.rocket_env import RocketEnv, N_ACTIONS, N_MESSAGES, FIELD_D, OBS_SLICES, MAX_STEPS
+from env.rocket_env import RocketEnv, N_ACTIONS, FIELD_D, OBS_SLICES, MAX_STEPS
 
 BALL_VIS = OBS_SLICES["ball_vis"].start
 NO_MSG = OBS_SLICES["msg_token"].start   # one-hot slot of the "no message" token
 from agents.dqn_agent import DQNAgent
 
 # Communication presets. A-D follow the proposal's Table 1; D2/D5/D10 add
-# budget points for the saturation curve (RQ1).
+# budget points for the saturation curve (RQ1). D*, C and B use the learned sender.
 COMM_SETTINGS = {
     "A":   dict(comm_budget=0,    comm_every=1),  # no communication
     "D2":  dict(comm_budget=2,    comm_every=1),
@@ -44,6 +44,30 @@ COMM_SETTINGS = {
 FIXED_SENDERS = {"F2": 40, "F5": 16, "F10": 8, "F20": 4, "Finf": 1}
 for _name, _k in FIXED_SENDERS.items():
     COMM_SETTINGS[_name] = dict(comm_budget=None, comm_every=_k)
+# Rule senders (no learned message head): send whenever allowed and seeing the
+# ball, until the per-episode budget is spent. The hand-coded counterpart of
+# the learned event-triggered sender at the same budgets.
+RULE_SENDERS = {"R2": 2, "R5": 5, "R10": 10, "R20": 20, "Rinf": None}
+for _name, _b in RULE_SENDERS.items():
+    COMM_SETTINGS[_name] = dict(comm_budget=_b, comm_every=1)
+
+# The learned message head chooses silent (0) or send (1). A sent message
+# carries the sender's ball sighting and position; the token itself carries no
+# extra content, and letting the head pick among interchangeable tokens fed the
+# receiver an arbitrary, drifting one-hot that slowed its learning.
+HEAD_MESSAGES = 2
+
+
+def sender_kind(setting: str) -> str:
+    """'none', 'fixed', 'rule' or 'learned'."""
+    if COMM_SETTINGS[setting]["comm_budget"] == 0:
+        return "none"
+    if setting in FIXED_SENDERS:
+        return "fixed"
+    if setting in RULE_SENDERS:
+        return "rule"
+    return "learned"
+
 
 REWARD_SCALE = 0.1        # task units are +/-100 per goal; train on +/-10
 EVAL_SEED_BASE = 10_000   # every eval uses the same episodes (common random numbers)
@@ -75,12 +99,18 @@ def decision_points(obs_list, can_send):
     return [bool(allowed) and o[BALL_VIS] > 0 for o, allowed in zip(obs_list, can_send)]
 
 
-def choose_messages(agents, obs_list, can_send, fixed: bool, silence: bool = False):
+def choose_messages(agents, obs_list, can_send, sender: str, silence: bool = False):
     """Message tokens for this step (0 = stay silent) and the decision mask
-    (which agents made a learned message decision this step)."""
-    if fixed:
-        return [0 if silence or not allowed else 1 for allowed in can_send], [False] * len(agents)
+    (which agents made a learned message decision this step).
+    sender: 'fixed' (send whenever allowed), 'rule' (send whenever allowed and
+    seeing the ball) or 'learned' (the message head decides at those points)."""
+    if sender in ("none", "fixed"):
+        return [0 if silence or not allowed or sender == "none" else 1 for allowed in can_send], [False] * len(agents)
     decide = decision_points(obs_list, can_send)
+    if sender == "rule":
+        return [0 if silence or not d else 1 for d in decide], [False] * len(agents)
+    if sender != "learned":
+        raise ValueError(f"unknown sender kind {sender!r}")
     messages = [
         agent.select_message(o) if d and not silence else 0
         for agent, o, d in zip(agents, obs_list, decide)
@@ -112,7 +142,7 @@ def message_value(receiver, obs) -> float:
 
 
 def evaluate(agents, env, n_eval: int = 50, seed: int = EVAL_SEED_BASE, silence: bool = False,
-             fixed: bool = False):
+             sender: str = "learned"):
     """Greedy evaluation without storing transitions or updating agents.
 
     silence=True blocks every message (coordination ablation: the return drop
@@ -130,7 +160,7 @@ def evaluate(agents, env, n_eval: int = 50, seed: int = EVAL_SEED_BASE, silence:
             sep = []
             while True:
                 actions = [agent.select_action(o) for agent, o in zip(agents, obs_list)]
-                messages, _ = choose_messages(agents, obs_list, info["can_send"], fixed, silence)
+                messages, _ = choose_messages(agents, obs_list, info["can_send"], sender, silence)
                 obs_list, _, terminated, truncated, info = env.step(actions, messages)
                 ep_return += info["task_reward"]
                 d = np.linalg.norm(info["agent_pos"] - info["ball_pos"], axis=1)
@@ -191,6 +221,7 @@ def train(
     opponent: bool = False,
     msg_credit: str = "voi",
     msg_cost: float = 0.05,
+    msg_handover: float = 0.5,
     verbose: bool = True,
 ):
     """msg_credit: how the learned message head is rewarded.
@@ -198,7 +229,14 @@ def train(
                I am credited with how much it improves the teammate's decision
                (message_value, in the teammate's Q units), minus msg_cost per
                message sent. Direct, low-variance credit for *when* to send.
-      "team" - the shared team reward (the original IQL-Comm credit)."""
+      "team" - the shared team reward (the original IQL-Comm credit).
+    msg_handover: rule-to-learned handover for the learned sender. At each
+      decision point during training, the send-on-sight rule decides with
+      probability p, which falls linearly from 1 to 0 over the first
+      `msg_handover` of training; otherwise the head decides. The head learns
+      off-policy from every decision. Without it, sender and receiver co-adapt:
+      the receiver learns against a send pattern that keeps shifting, and runs
+      were unstable (some seeds collapsed). Evaluation always uses the head."""
     if msg_credit not in ("voi", "team"):
         raise ValueError("msg_credit must be 'voi' or 'team'")
     if n_episodes <= 0 or max_steps <= 0:
@@ -210,9 +248,9 @@ def train(
     random.seed(seed)
 
     comm_cfg = COMM_SETTINGS[setting]
-    uses_comm = comm_cfg["comm_budget"] != 0
-    fixed = setting in FIXED_SENDERS
-    learns_msgs = uses_comm and not fixed
+    sender = sender_kind(setting)
+    uses_comm = sender != "none"
+    learns_msgs = sender == "learned"
     # No keeper by default: with assist-based scoring, the keeper made the task
     # unlearnable for independent DQN within 4000 episodes (0-5% goals).
     env = make_env(setting, obs_frac, comm_delay, max_steps, opponent=opponent)
@@ -220,7 +258,7 @@ def train(
     obs_dim = env.observation_space.shape[0]
 
     agents = [
-        DQNAgent(obs_dim=obs_dim, n_actions=N_ACTIONS, n_messages=N_MESSAGES, agent_id=i)
+        DQNAgent(obs_dim=obs_dim, n_actions=N_ACTIONS, n_messages=HEAD_MESSAGES, agent_id=i)
         for i in range(2)
     ]
     explore_episodes = max(1, int(explore_frac * n_episodes))
@@ -231,8 +269,9 @@ def train(
         "comm_delay": comm_delay,
         "comm_budget": comm_cfg["comm_budget"],
         "comm_every": comm_cfg["comm_every"],
-        "fixed_sender": fixed,
-        "event_triggered": learns_msgs,
+        "sender": sender,
+        "fixed_sender": sender == "fixed",
+        "event_triggered": sender in ("rule", "learned"),
         "seed": seed,
         "n_episodes": n_episodes,
         "max_steps": max_steps,
@@ -240,6 +279,7 @@ def train(
         "opponent": opponent,
         "msg_credit": msg_credit if learns_msgs else None,
         "msg_cost": msg_cost if learns_msgs and msg_credit == "voi" else None,
+        "msg_handover": msg_handover if learns_msgs else None,
         "episode_return": [],
         "score_team": [],
         "score_opp": [],
@@ -263,11 +303,17 @@ def train(
         env.assist_required = random.random() < ramp
         obs_list, info = env.reset(seed=seed * 1_000_003 + ep)
         ep_return = 0.0
+        p_rule = 0.0
+        if learns_msgs and msg_handover > 0:
+            p_rule = max(0.0, 1.0 - (ep - 1) / (msg_handover * n_episodes))
         while True:
             actions = [agent.select_action(o) for agent, o in zip(agents, obs_list)]
             messages = [0, 0]
             if uses_comm:
-                messages, decided = choose_messages(agents, obs_list, info["can_send"], fixed)
+                messages, decided = choose_messages(agents, obs_list, info["can_send"], sender)
+                if p_rule > 0:
+                    messages = [1 if d and random.random() < p_rule else m
+                                for m, d in zip(messages, decided)]
                 for i, agent in enumerate(agents):
                     if decided[i]:
                         agent.message_decision(obs_list[i], messages[i])
@@ -324,7 +370,7 @@ def train(
             )
 
         if ep % eval_every == 0 or ep == n_episodes:
-            metrics = evaluate(agents, eval_env, n_eval=n_eval_episodes, fixed=fixed)
+            metrics = evaluate(agents, eval_env, n_eval=n_eval_episodes, sender=sender)
             history["eval_episode"].append(ep)
             history["eval"].append(metrics)
             # Model selection on the validation episodes: keep the best snapshot
@@ -342,13 +388,13 @@ def train(
     # Final, larger evaluation on held-out seeds (disjoint from the validation
     # episodes used for model selection). The last policy is recorded too.
     final_seed = EVAL_SEED_BASE + 100_000
-    history["final_eval_last"] = evaluate(agents, eval_env, n_eval=n_final_eval, seed=final_seed, fixed=fixed)
+    history["final_eval_last"] = evaluate(agents, eval_env, n_eval=n_final_eval, seed=final_seed, sender=sender)
     _restore(agents, best[2])
     history["best_episode"] = best[1]
-    history["final_eval"] = evaluate(agents, eval_env, n_eval=n_final_eval, seed=final_seed, fixed=fixed)
+    history["final_eval"] = evaluate(agents, eval_env, n_eval=n_final_eval, seed=final_seed, sender=sender)
     if uses_comm:
         history["final_eval_silenced"] = evaluate(
-            agents, eval_env, n_eval=n_final_eval, seed=final_seed, silence=True, fixed=fixed
+            agents, eval_env, n_eval=n_final_eval, seed=final_seed, silence=True, sender=sender
         )
     history["train_seconds"] = time.time() - t0
     history["total_steps"] = total_steps
@@ -391,6 +437,7 @@ if __name__ == "__main__":
     parser.add_argument("--opponent", action="store_true", help="add the scripted keeper")
     parser.add_argument("--msg_credit", default="voi", choices=["voi", "team"])
     parser.add_argument("--msg_cost", type=float, default=0.05)
+    parser.add_argument("--msg_handover", type=float, default=0.5)
     args = parser.parse_args()
 
     train(
@@ -415,4 +462,5 @@ if __name__ == "__main__":
         opponent=args.opponent,
         msg_credit=args.msg_credit,
         msg_cost=args.msg_cost,
+        msg_handover=args.msg_handover,
     )

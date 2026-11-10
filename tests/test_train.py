@@ -9,8 +9,8 @@ import numpy as np
 from env.rocket_env import N_ACTIONS, N_MESSAGES, OBS_DIM, OBS_SLICES, RocketEnv
 from agents.dqn_agent import DQNAgent
 from experiments.train import (
-    BALL_VIS, FIXED_SENDERS, NO_MSG, choose_messages, decision_points, make_env, mask_message,
-    message_value, train,
+    BALL_VIS, FIXED_SENDERS, HEAD_MESSAGES, NO_MSG, RULE_SENDERS, choose_messages, decision_points,
+    make_env, mask_message, message_value, sender_kind, train,
 )
 
 
@@ -30,7 +30,7 @@ def test_learned_sender_silent_without_ball_sighting():
     for a in agents:
         a.eps = 1.0   # fully random: would send often if allowed
     for _ in range(200):
-        msgs, decided = choose_messages(agents, [_obs(False), _obs(False)], [True, True], fixed=False)
+        msgs, decided = choose_messages(agents, [_obs(False), _obs(False)], [True, True], "learned")
         assert msgs == [0, 0] and decided == [False, False]
 
 
@@ -39,7 +39,7 @@ def test_learned_sender_silent_when_budget_spent():
     for a in agents:
         a.eps = 1.0
     for _ in range(200):
-        msgs, decided = choose_messages(agents, [_obs(True), _obs(True)], [False, False], fixed=False)
+        msgs, decided = choose_messages(agents, [_obs(True), _obs(True)], [False, False], "learned")
         assert msgs == [0, 0] and decided == [False, False]
 
 
@@ -53,8 +53,8 @@ def test_silence_blocks_all_messages():
     agents = _agents()
     for a in agents:
         a.eps = 1.0
-    for fixed in (False, True):
-        msgs, _ = choose_messages(agents, [_obs(True), _obs(True)], [True, True], fixed, silence=True)
+    for sender in ("learned", "rule", "fixed"):
+        msgs, _ = choose_messages(agents, [_obs(True), _obs(True)], [True, True], sender, silence=True)
         assert msgs == [0, 0]
 
 
@@ -75,7 +75,7 @@ def test_fixed_sender_sends_every_k_steps():
         agents = _agents()
         sent_steps = []
         for t in range(60):
-            msgs, _ = choose_messages(agents, obs, info["can_send"], fixed=True)
+            msgs, _ = choose_messages(agents, obs, info["can_send"], "fixed")
             if msgs[0]:
                 sent_steps.append(t)
             obs, _, term, trunc, info = env.step([0, 0], msgs)
@@ -83,6 +83,39 @@ def test_fixed_sender_sends_every_k_steps():
                 break
         assert sent_steps and sent_steps[0] < k, setting
         assert all(b - a == k for a, b in zip(sent_steps, sent_steps[1:])), setting
+
+
+def test_sender_kinds():
+    assert sender_kind("A") == "none"
+    assert all(sender_kind(s) == "fixed" for s in FIXED_SENDERS)
+    assert all(sender_kind(s) == "rule" for s in RULE_SENDERS)
+    assert all(sender_kind(s) == "learned" for s in ("D2", "D5", "D10", "D", "C", "B"))
+
+
+def test_rule_sender_sends_on_sight_only():
+    agents = _agents()
+    msgs, decided = choose_messages(agents, [_obs(True), _obs(False)], [True, True], "rule")
+    assert msgs == [1, 0] and decided == [False, False]       # no learned decision recorded
+    msgs, _ = choose_messages(agents, [_obs(True), _obs(True)], [False, True], "rule")
+    assert msgs == [0, 1]                                     # budget spent for agent 0
+
+
+def test_rule_sender_respects_budget():
+    env = make_env("R2", obs_frac=1.0)                        # always sees the ball
+    obs, info = env.reset(seed=0)
+    agents = _agents()
+    for _ in range(10):
+        msgs, _ = choose_messages(agents, obs, info["can_send"], "rule")
+        obs, _, term, trunc, info = env.step([0, 0], msgs)
+        if term or trunc:
+            break
+    assert info["msgs_sent"] == [2, 2]
+
+
+def test_learned_head_is_binary():
+    agent = DQNAgent(obs_dim=OBS_DIM, n_actions=N_ACTIONS, n_messages=HEAD_MESSAGES)
+    agent.eps = 1.0
+    assert set(agent.select_message(_obs(True)) for _ in range(500)) == {0, 1}
 
 
 def test_mask_message_matches_env_no_message_encoding():
@@ -145,7 +178,11 @@ def test_train_smoke_all_kinds():
         h = train(setting="D5", n_episodes=3, obs_frac=0.15, max_steps=40, msg_credit="team",
                   save_dir=os.path.join(d, "team"), eval_every=3, n_eval_episodes=2,
                   n_final_eval=2, verbose=False, seed=0)
-        assert h["msg_credit"] == "team" and h["msg_cost"] is None
+        assert h["msg_credit"] == "team" and h["msg_cost"] is None and h["msg_handover"] == 0.5
+        h = train(setting="R5", n_episodes=2, obs_frac=0.15, max_steps=40, save_dir=os.path.join(d, "R5"),
+                  eval_every=2, n_eval_episodes=2, n_final_eval=2, verbose=False, seed=0)
+        assert h["sender"] == "rule" and h["msg_credit"] is None and "final_eval_silenced" in h
+        assert all(m <= 10 for m in h["msgs_sent"])          # 2 agents x budget 5
 
 
 if __name__ == "__main__":

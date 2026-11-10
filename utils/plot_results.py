@@ -79,7 +79,8 @@ def welch_p(a, b):
 
 # x-axis order of the saturation curve: (setting, budget label)
 BUDGET_ORDER = [("A", "0"), ("D2", "2"), ("D5", "5"), ("D10", "10"), ("D", "20"), ("B", "inf")]
-SETTING_ORDER = ["A", "D2", "D5", "D10", "D", "C", "B", "F2", "F5", "F10", "F20", "Finf"]
+SETTING_ORDER = ["A", "D2", "D5", "D10", "D", "C", "B", "R2", "R5", "R10", "R20", "Rinf",
+                 "F2", "F5", "F10", "F20", "Finf"]
 # Fixed-schedule senders on the same budget axis (A = 0 messages)
 FIXED_ORDER = [("A", "0"), ("F2", "2"), ("F5", "5"), ("F10", "10"), ("F20", "20"), ("Finf", "inf")]
 

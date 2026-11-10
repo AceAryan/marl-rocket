@@ -75,12 +75,30 @@ OBS_SLICES = {
     "send_age": slice(33, 34),         # steps since my last send / MSG_TTL, capped at 1: whether
                                        # the teammate's copy of my last message has expired
 }
-OBS_DIM = 34
+# Memory: the last known ball and teammate positions with their age, built
+# from the agent's own sightings and the messages it received (whichever is
+# newer). A summary of the agent's own observation history, so no extra
+# information; without it a memoryless policy loses a message after MSG_TTL
+# steps, and sparse or stale messages confused it more than they informed it.
+OBS_SLICES.update({
+    "mem_ball": slice(34, 36),         # last known ball position
+    "mem_ball_rel": slice(36, 38),     # ... relative to my current position
+    "mem_ball_age": slice(38, 39),     # steps since that sighting / MEM_AGE_CAP (1 = unknown)
+    "mem_mate": slice(39, 41),         # last known teammate position
+    "mem_mate_age": slice(41, 42),     # steps since that sighting / MEM_AGE_CAP (1 = unknown)
+})
+OBS_DIM = 42
+MEM_AGE_CAP = 40
 MAX_STEPS = 80           # short, match-clock episodes: speed (and so information) matters
 
 
 def _dist(a, b):
     return math.hypot(float(a[0]) - float(b[0]), float(a[1]) - float(b[1]))
+
+
+def _denorm_pos(p):
+    """Inverse of _norm_pos."""
+    return (np.asarray(p, dtype=np.float32) + 1.0) / 2.0 * np.array([FIELD_W, FIELD_H], dtype=np.float32)
 
 
 def _norm_pos(p):
@@ -126,6 +144,7 @@ class RocketEnv(gym.Env):
         curriculum: str = "full",
         opponent: bool = True,
         assist_required: bool = True,
+        memory: bool = True,
         render_mode: Optional[str] = None,
     ):
         super().__init__()
@@ -149,6 +168,7 @@ class RocketEnv(gym.Env):
         self.assist_required = assist_required and n_agents > 1
         self.goal_width = 12.0 if curriculum == "easy" else GOAL_W
         self.opp_speed = 0.0 if curriculum == "easy" else OPP_SPEED
+        self.memory = memory
         self.render_mode = render_mode
 
         self._obs_size = OBS_DIM
@@ -243,6 +263,7 @@ class RocketEnv(gym.Env):
         if messages is not None:
             self._handle_messages(messages, allowed)
         self._deliver_messages()
+        self._update_memory()
 
         truncated = (not terminated) and self._step_count >= self.max_steps
         obs = self._get_obs()
@@ -295,6 +316,12 @@ class RocketEnv(gym.Env):
         self._msg_step = [None] * self.n_agents            # step of last delivery
         self._msgs_sent = [0] * self.n_agents
         self._last_send = [None] * self.n_agents           # step of each agent's last send
+        # Memory (see OBS_SLICES): field position and step of the newest sighting
+        self._mem_ball = [None] * self.n_agents
+        self._mem_ball_t = [None] * self.n_agents
+        self._mem_mate = [None] * self.n_agents
+        self._mem_mate_t = [None] * self.n_agents
+        self._update_memory()
 
     def _opponent_move(self):
         """Scripted keeper confined to y >= OPP_MIN_Y: chase the ball from above
@@ -406,9 +433,27 @@ class RocketEnv(gym.Env):
                 self._msg_token[j] = token
                 self._msg_payload[j] = payload
                 self._msg_step[j] = deliver_step
+                sent_t = deliver_step - self.comm_delay
+                if payload[4] > 0:   # the sender saw the ball
+                    self._remember(self._mem_ball, self._mem_ball_t, j, _denorm_pos(payload[:2]), sent_t)
+                self._remember(self._mem_mate, self._mem_mate_t, j, _denorm_pos(payload[5:7]), sent_t)
             else:
                 pending.append((deliver_step, j, token, payload))
         self._msg_queue = pending
+
+    @staticmethod
+    def _remember(mem, mem_t, i, pos, t):
+        if mem_t[i] is None or t >= mem_t[i]:
+            mem[i] = np.asarray(pos, dtype=np.float32).copy()
+            mem_t[i] = t
+
+    def _update_memory(self):
+        """Own sightings at the current step (always the newest information)."""
+        for i in range(self.n_agents):
+            if self._visible(i, self._ball_pos):
+                self._remember(self._mem_ball, self._mem_ball_t, i, self._ball_pos, self._step_count)
+            if self.n_agents > 1 and self._visible(i, self._agent_pos[1 - i]):
+                self._remember(self._mem_mate, self._mem_mate_t, i, self._agent_pos[1 - i], self._step_count)
 
     def _potential(self):
         """Phi(s): ball close to the opponent goal, and some teammate close to
@@ -473,6 +518,16 @@ class RocketEnv(gym.Env):
                 o[OBS_SLICES["send_age"]] = 1.0
             else:
                 o[OBS_SLICES["send_age"]] = min(self._step_count - self._last_send[i], MSG_TTL) / MSG_TTL
+            o[OBS_SLICES["mem_ball_age"]] = 1.0
+            o[OBS_SLICES["mem_mate_age"]] = 1.0
+            if self.memory:
+                if self._mem_ball_t[i] is not None:
+                    o[OBS_SLICES["mem_ball"]] = _norm_pos(self._mem_ball[i])
+                    o[OBS_SLICES["mem_ball_rel"]] = (self._mem_ball[i] - self._agent_pos[i]) / [FIELD_W, FIELD_H]
+                    o[OBS_SLICES["mem_ball_age"]] = min(self._step_count - self._mem_ball_t[i], MEM_AGE_CAP) / MEM_AGE_CAP
+                if self._mem_mate_t[i] is not None:
+                    o[OBS_SLICES["mem_mate"]] = _norm_pos(self._mem_mate[i])
+                    o[OBS_SLICES["mem_mate_age"]] = min(self._step_count - self._mem_mate_t[i], MEM_AGE_CAP) / MEM_AGE_CAP
             if self.assist_required:
                 o[OBS_SLICES["assist_rule"]] = 1.0
                 o[OBS_SLICES["assist_me"]] = float(self._assisted(i))

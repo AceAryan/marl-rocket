@@ -314,6 +314,63 @@ def test_train_end_to_end():
     print("ok  train() end-to-end")
 
 
+def test_memory_keeps_own_sighting():
+    from env.rocket_env import MEM_AGE_CAP
+    env = RocketEnv(obs_frac=0.15, opponent=False)
+    env.reset(seed=0)
+    env._agent_pos[:] = [[10.0, 12.0], [2.0, 2.0]]
+    _freeze_ball(env, [10.0, 14.0])
+    obs, *_ = env.step([0, 0], [0, 0])
+    assert obs[0][OBS_SLICES["ball_vis"]][0] == 1.0
+    assert np.allclose(obs[0][OBS_SLICES["mem_ball"]], obs[0][OBS_SLICES["ball"]])
+    assert obs[0][OBS_SLICES["mem_ball_age"]][0] == 0.0
+    env._agent_pos[0] = [10.0, 1.0]                     # walk out of view
+    obs, *_ = env.step([0, 0], [0, 0])
+    obs, *_ = env.step([0, 0], [0, 0])
+    assert obs[0][OBS_SLICES["ball_vis"]][0] == 0.0
+    assert np.allclose(obs[0][OBS_SLICES["mem_ball"]], [0.0, 2 * 14.0 / 30.0 - 1.0], atol=1e-5)
+    assert np.isclose(obs[0][OBS_SLICES["mem_ball_age"]][0], 2 / MEM_AGE_CAP)
+    assert np.allclose(obs[0][OBS_SLICES["mem_ball_rel"]], [0.0, 13.0 / 30.0], atol=1e-4)
+    assert obs[1][OBS_SLICES["mem_ball_age"]][0] == 1.0  # agent 1 never saw it
+    print("ok  memory keeps the last own sighting with its age")
+
+
+def test_memory_from_message_uses_send_time():
+    from env.rocket_env import MEM_AGE_CAP
+    env = RocketEnv(obs_frac=0.15, opponent=False, comm_delay=2)
+    env.reset(seed=0)
+    env._agent_pos[:] = [[10.0, 14.0], [2.0, 1.0]]
+    _freeze_ball(env, [10.0, 16.0])
+    obs, *_ = env.step([0, 0], [1, 0])                  # sent at step 1
+    assert obs[1][OBS_SLICES["mem_ball_age"]][0] == 1.0
+    obs, *_ = env.step([0, 0], [0, 0])
+    obs, *_ = env.step([0, 0], [0, 0])                  # delivered at step 3
+    assert np.allclose(obs[1][OBS_SLICES["mem_ball"]], obs[0][OBS_SLICES["ball"]])
+    assert np.isclose(obs[1][OBS_SLICES["mem_ball_age"]][0], 2 / MEM_AGE_CAP)
+    assert np.allclose(obs[1][OBS_SLICES["mem_mate"]], [0.0, 2 * 14.0 / 30.0 - 1.0], atol=1e-5)
+    for _ in range(15):                                 # outlives the message (TTL 10)
+        obs, *_ = env.step([0, 0], [0, 0])
+    assert obs[1][OBS_SLICES["msg_token"]][0] == 1.0
+    assert np.isclose(obs[1][OBS_SLICES["mem_ball_age"]][0], 17 / MEM_AGE_CAP)
+    print("ok  memory is updated from messages, aged from the send time")
+
+
+def test_memory_prefers_newer_and_can_be_disabled():
+    env = RocketEnv(obs_frac=0.15, opponent=False, comm_delay=3)
+    env.reset(seed=0)
+    env._agent_pos[:] = [[10.0, 14.0], [2.0, 1.0]]
+    _freeze_ball(env, [10.0, 16.0])
+    env.step([0, 0], [1, 0])                            # old sighting in flight
+    env._agent_pos[1] = [10.0, 13.0]                    # agent 1 now sees the ball itself
+    for _ in range(3):
+        obs, *_ = env.step([0, 0], [0, 0])
+    assert obs[1][OBS_SLICES["mem_ball_age"]][0] == 0.0  # own newer sighting kept
+    off = RocketEnv(obs_frac=0.15, memory=False)
+    obs, _ = off.reset(seed=0)
+    assert np.all(obs[0][OBS_SLICES["mem_ball"]] == 0) and obs[0][OBS_SLICES["mem_ball_age"]][0] == 1.0
+    print("ok  memory keeps the newest sighting; memory=False blanks it")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

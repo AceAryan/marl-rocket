@@ -80,6 +80,7 @@ def make_env(
     max_steps: int = MAX_STEPS,
     curriculum: str = "full",
     opponent: bool = False,
+    memory: bool = True,
 ):
     return RocketEnv(
         n_agents=2,
@@ -88,6 +89,7 @@ def make_env(
         max_steps=max_steps,
         curriculum=curriculum,
         opponent=opponent,
+        memory=memory,
         **COMM_SETTINGS[setting],
     )
 
@@ -204,7 +206,7 @@ def _restore(agents, snap):
 
 def train(
     setting: str = "B",
-    n_episodes: int = 4000,
+    n_episodes: int = 10_000,
     obs_frac: float = 1.0,
     comm_delay: int = 0,
     max_steps: int = MAX_STEPS,
@@ -222,6 +224,7 @@ def train(
     msg_credit: str = "voi",
     msg_cost: float = 0.05,
     msg_handover: float = 0.5,
+    memory: bool = True,
     verbose: bool = True,
 ):
     """msg_credit: how the learned message head is rewarded.
@@ -253,8 +256,8 @@ def train(
     learns_msgs = sender == "learned"
     # No keeper by default: with assist-based scoring, the keeper made the task
     # unlearnable for independent DQN within 4000 episodes (0-5% goals).
-    env = make_env(setting, obs_frac, comm_delay, max_steps, opponent=opponent)
-    eval_env = make_env(setting, obs_frac, comm_delay, max_steps, opponent=opponent)
+    env = make_env(setting, obs_frac, comm_delay, max_steps, opponent=opponent, memory=memory)
+    eval_env = make_env(setting, obs_frac, comm_delay, max_steps, opponent=opponent, memory=memory)
     obs_dim = env.observation_space.shape[0]
 
     agents = [
@@ -277,6 +280,7 @@ def train(
         "max_steps": max_steps,
         "assist_curriculum": assist_curriculum,
         "opponent": opponent,
+        "memory": memory,
         "msg_credit": msg_credit if learns_msgs else None,
         "msg_cost": msg_cost if learns_msgs and msg_credit == "voi" else None,
         "msg_handover": msg_handover if learns_msgs else None,
@@ -420,7 +424,7 @@ def train(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--setting", default="B", choices=list(COMM_SETTINGS))
-    parser.add_argument("--episodes", type=int, default=4000)
+    parser.add_argument("--episodes", type=int, default=10_000)
     parser.add_argument("--obs_frac", type=float, default=1.0)
     parser.add_argument("--comm_delay", type=int, default=0)
     parser.add_argument("--max_steps", type=int, default=MAX_STEPS)
@@ -438,6 +442,7 @@ if __name__ == "__main__":
     parser.add_argument("--msg_credit", default="voi", choices=["voi", "team"])
     parser.add_argument("--msg_cost", type=float, default=0.05)
     parser.add_argument("--msg_handover", type=float, default=0.5)
+    parser.add_argument("--no_memory", action="store_true", help="ablation: blank the memory inputs")
     args = parser.parse_args()
 
     train(
@@ -463,4 +468,5 @@ if __name__ == "__main__":
         msg_credit=args.msg_credit,
         msg_cost=args.msg_cost,
         msg_handover=args.msg_handover,
+        memory=not args.no_memory,
     )

@@ -361,7 +361,7 @@ def build_report(base, before=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dir", default="checkpoints/sweep_v3")
+    parser.add_argument("--dir", default="checkpoints/sweep_v4")
     parser.add_argument("--before", default="checkpoints/sweep_assist",
                         help="earlier sweep shown as 'before fix' in the send-timing figure")
     args = parser.parse_args()

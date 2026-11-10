@@ -46,8 +46,9 @@ SWEEPS = {
     # RQ3: value of communication as observability shrinks
     "obs": [(s, rho, 0) for rho in (1.0, 0.25, PARTIAL_RHO, LOW_RHO) for s in ["A"] + UNLIMITED],
 }
-# Pilot: each kind of sender at a tight and an unlimited budget
-SWEEPS["pilot"] = [(s, rho, 0) for rho in (PARTIAL_RHO, LOW_RHO) for s in ("A", "D5", "B", "R5", "Rinf", "F5", "Finf")]
+# Pilot: the cases that fell below no communication without memory, plus anchors
+SWEEPS["pilot"] = ([(s, LOW_RHO, 0) for s in ("A", "D2", "D5", "D", "B", "R5", "F10", "Finf")]
+                   + [(s, PARTIAL_RHO, 0) for s in ("A", "D5")])
 # Quick end-to-end check of the pipeline
 SWEEPS["smoke"] = [("A", PARTIAL_RHO, 0), ("D", PARTIAL_RHO, 0), ("B", PARTIAL_RHO, 0), ("R5", PARTIAL_RHO, 0), ("F5", PARTIAL_RHO, 0)]
 SWEEPS["all"] = list(dict.fromkeys(
@@ -76,10 +77,10 @@ def _run_one(job):
 
 def run_sweep(
     sweep: str = "budget",
-    episodes: int = 4000,
+    episodes: int = 10_000,
     seeds=DEFAULT_SEEDS,
     max_steps: int = MAX_STEPS,
-    save_dir: str = "checkpoints/sweep_v3",
+    save_dir: str = "checkpoints/sweep_v4",
     eval_every: int = 250,
     n_eval_episodes: int = 100,
     n_final_eval: int = 200,
@@ -87,6 +88,7 @@ def run_sweep(
     msg_credit: str = "voi",
     msg_cost: float = 0.05,
     msg_handover: float = 0.5,
+    memory: bool = True,
 ):
     jobs = []
     for setting, obs_frac, comm_delay in SWEEPS[sweep]:
@@ -99,7 +101,7 @@ def run_sweep(
                 n_episodes=episodes, max_steps=max_steps, save_dir=path,
                 eval_every=eval_every, n_eval_episodes=n_eval_episodes,
                 n_final_eval=n_final_eval, msg_credit=msg_credit, msg_cost=msg_cost,
-                msg_handover=msg_handover,
+                msg_handover=msg_handover, memory=memory,
             ))
     total = len(SWEEPS[sweep]) * len(seeds)
     print(f"Sweep '{sweep}': {total} runs, {total - len(jobs)} already done, "
@@ -119,13 +121,14 @@ def run_sweep(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--sweep", default="budget", choices=list(SWEEPS))
-    parser.add_argument("--episodes", type=int, default=4000)
+    parser.add_argument("--episodes", type=int, default=10_000)
     parser.add_argument("--seeds", type=int, nargs="+", default=list(DEFAULT_SEEDS))
     parser.add_argument("--max_steps", type=int, default=MAX_STEPS)
-    parser.add_argument("--save_dir", default="checkpoints/sweep_v3")
+    parser.add_argument("--save_dir", default="checkpoints/sweep_v4")
     parser.add_argument("--msg_credit", default="voi", choices=["voi", "team"])
     parser.add_argument("--msg_cost", type=float, default=0.05)
     parser.add_argument("--msg_handover", type=float, default=0.5)
+    parser.add_argument("--no_memory", action="store_true", help="ablation: blank the memory inputs")
     parser.add_argument("--eval_every", type=int, default=250)
     parser.add_argument("--n_eval_episodes", type=int, default=100)
     parser.add_argument("--n_final_eval", type=int, default=200)
@@ -144,4 +147,5 @@ if __name__ == "__main__":
         msg_credit=args.msg_credit,
         msg_cost=args.msg_cost,
         msg_handover=args.msg_handover,
+        memory=not args.no_memory,
     )

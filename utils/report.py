@@ -24,8 +24,7 @@ import numpy as np
 
 from utils.plot_results import load_histories, group_runs, _ci95, mannwhitney_p
 
-PARTIAL = 0.15
-LOW = 0.1   # lowest observation radius, where shared sightings matter most
+PARTIAL = 0.075   # main observation radius of the budget and delay sweeps (run_all.MAIN_RHO)
 # One encoding everywhere: gray = no communication, blue = learned sender,
 # aqua = send-on-sight rule, orange = fixed schedule.
 GRAY, BLUE, ORANGE, AQUA = "#52514e", "#2a78d6", "#eb6834", "#1baf7a"
@@ -105,7 +104,7 @@ def _a_line(ax, groups, rho, xmax, ls="--", suffix=""):
 
 
 def fig_budget(plt, groups, out):
-    rhos = [r for r in (PARTIAL, LOW) if (r, 0, "A") in groups]
+    rhos = [r for r in (PARTIAL,) if (r, 0, "A") in groups]
     if not rhos:
         return
     fig, axes = plt.subplots(1, len(rhos), figsize=(6.2 * len(rhos), 4.6), sharey=True, squeeze=False)
@@ -318,8 +317,6 @@ def write_results_md(groups, base, timing_rows=None):
     order = ["A", "D2", "D5", "D10", "D", "C", "B", "R2", "R5", "R10", "R20", "Rinf",
              "F2", "F5", "F10", "F20", "Finf"]
     table(f"RQ1: message budget (rho = {PARTIAL})", [(PARTIAL, 0, s) for s in order])
-    table(f"RQ1: message budget (rho = {LOW})", [(LOW, 0, s) for s in order])
-    table("RQ1: message budget (full view, rho = 1.0)", [(1.0, 0, s) for s in order])
     delays = sorted({k[1] for k in groups if k[0] == PARTIAL})
     table(f"RQ2: message delay (rho = {PARTIAL})",
           [(PARTIAL, 0, "A")] + [(PARTIAL, d, s) for s in ("B", "Rinf", "Finf") for d in delays],
@@ -339,7 +336,7 @@ def write_results_md(groups, base, timing_rows=None):
             lines.append(f"| {r:g} | " + " | ".join(cells) + " |")
         lines.append("")
     if timing_rows:
-        lines.extend(["## Message timing (greedy, rho = 0.15)", "",
+        lines.extend([f"## Message timing (greedy, rho = {PARTIAL})", "",
                       "| Policy | Seeds | Median send step | % sent in first 10 steps | % sent while seeing ball |",
                       "|---|---|---|---|---|"])
         for label, n, med, early, vis in timing_rows:

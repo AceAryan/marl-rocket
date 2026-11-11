@@ -198,14 +198,14 @@ senders must also discover *when* to send.
 
 | Sweep | Runs | Question |
 |-------|------|----------|
-| `budget` | A, D2..D, C, B at rho in {0.15, 0.10} | RQ1: saturation point, learned sender |
-| `rule` | R2..Rinf at rho in {0.15, 0.10} | RQ1, rule sender |
-| `fixed` | F2..Finf at rho in {0.15, 0.10} | RQ1, fixed schedule |
-| `delay` | A; B, Rinf, Finf with delay in {0, 1, 2, 5}, rho = 0.15 | RQ2: delay |
-| `obs` | A, B, Rinf, Finf x rho in {1.0, 0.25, 0.15, 0.10} | RQ3: observability |
-| `pilot` | A, D5, B, R5, Rinf, F5, Finf at rho 0.15 and 0.10 | quick comparison of the senders |
-| `smoke` | A, D, B, R5, F5 at rho 0.15 | quick pipeline check |
-| `all` | union of the above (51 configurations, 510 runs at 10 seeds) | |
+| `budget` | A, D2..D, C, B at rho = 0.075 | RQ1: saturation point, learned sender |
+| `rule` | R2..Rinf at rho = 0.075 | RQ1, rule sender |
+| `fixed` | F2..Finf at rho = 0.075 | RQ1, fixed schedule |
+| `delay` | A; B, Rinf, Finf with delay in {0, 2, 5}, rho = 0.075 | RQ2: delay |
+| `obs` | A, B, Rinf, Finf x rho in {1.0, 0.15, 0.10, 0.075} | RQ3: observability |
+| `pilot` | A, B, Rinf, Finf at rho = 0.075 | headroom check at the main radius |
+| `smoke` | A, D, B, R5, F5 at rho = 0.075 | quick pipeline check |
+| `all` | union of the above (35 configurations, 350 runs at 10 seeds) | |
 
 Results go to `checkpoints/sweep_v4/` (`summary.csv`, `results.png`, `results.md`, `figures/`). Earlier sweeps (`sweep_final`, `sweep_v2`, `sweep_v3`: no memory, shorter training) are incompatible with the current code; don't resume into them. Default: 10 seeds (0-9), 10,000
 episodes per run (channel settings learn more slowly than A at first). Agents are independent Double
@@ -237,5 +237,11 @@ metrics with headroom.
   the shared information from the cost of learning when to send.
 - **80-step episodes** instead of 200, so speed (and so information) matters,
   and budgets rescaled to 2-20 messages per episode.
-- The partial-observability levels are rho = 0.15 and 0.10 (proposal: 0.25),
-  where sharing matters; 0.25 is still in the RQ3 sweep.
+- The main observation radius is rho = 0.075 (proposal: 0.25; `MAIN_RHO` in
+  `run_all.py`). With memory and 80-step episodes, no communication scores
+  92-96% at rho >= 0.10, which leaves communication no room to help; at 0.075 it
+  falls to about 72% while unlimited communication reaches about 87% (2-seed
+  pilot). At 0.05 no setting learned reliably in 10k episodes.
+- Results are reported as medians with interquartile ranges and Mann-Whitney U
+  tests: about 4% of runs collapse when one agent's Q-function diverges, and a
+  single collapsed seed would dominate a mean or a t-test.

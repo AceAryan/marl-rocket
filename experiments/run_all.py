@@ -29,28 +29,31 @@ from utils.report import build_report
 
 DEFAULT_SEEDS = tuple(range(10))
 
-PARTIAL_RHO = 0.15   # main partial observability level (budget and delay sweeps)
-LOW_RHO = 0.1        # lowest observation radius, where shared sightings matter most
+# Main observation radius for the budget and delay sweeps. With memory and
+# 80-step episodes, no communication scores 92-96% at rho >= 0.10 (no headroom
+# for communication); at 0.075 it falls to ~72% while unlimited communication
+# reaches ~87%; at 0.05 nothing learns reliably in 10k episodes.
+MAIN_RHO = 0.075
+OBS_RHOS = (1.0, 0.15, 0.1, MAIN_RHO)   # RQ3: full view down to the main radius
 
 LEARNED = ["A", "D2", "D5", "D10", "D", "C", "B"]   # A plus the learned-sender settings
 UNLIMITED = ["B", "Rinf", "Finf"]                   # learned / rule / fixed sender, no budget
 
 # (setting, obs_frac, comm_delay) triples per sweep
 SWEEPS = {
-    # RQ1: message budget, for each kind of sender, at two observation radii
-    "budget": [(s, rho, 0) for rho in (PARTIAL_RHO, LOW_RHO) for s in LEARNED],
-    "rule": [(s, rho, 0) for rho in (PARTIAL_RHO, LOW_RHO) for s in RULE_SENDERS],
-    "fixed": [(s, rho, 0) for rho in (PARTIAL_RHO, LOW_RHO) for s in FIXED_SENDERS],
+    # RQ1: message budget, for each kind of sender
+    "budget": [(s, MAIN_RHO, 0) for s in LEARNED],
+    "rule": [(s, MAIN_RHO, 0) for s in RULE_SENDERS],
+    "fixed": [(s, MAIN_RHO, 0) for s in FIXED_SENDERS],
     # RQ2: delay on unlimited communication
-    "delay": [("A", PARTIAL_RHO, 0)] + [(s, PARTIAL_RHO, d) for s in UNLIMITED for d in (0, 1, 2, 5)],
+    "delay": [("A", MAIN_RHO, 0)] + [(s, MAIN_RHO, d) for s in UNLIMITED for d in (0, 2, 5)],
     # RQ3: value of communication as observability shrinks
-    "obs": [(s, rho, 0) for rho in (1.0, 0.25, PARTIAL_RHO, LOW_RHO) for s in ["A"] + UNLIMITED],
+    "obs": [(s, rho, 0) for rho in OBS_RHOS for s in ["A"] + UNLIMITED],
 }
-# Pilot: the cases that fell below no communication without memory, plus anchors
-SWEEPS["pilot"] = ([(s, LOW_RHO, 0) for s in ("A", "D2", "D5", "D", "B", "R5", "F10", "Finf")]
-                   + [(s, PARTIAL_RHO, 0) for s in ("A", "D5")])
+# Pilot: no communication vs the unlimited senders at the main radius
+SWEEPS["pilot"] = [(s, MAIN_RHO, 0) for s in ["A"] + UNLIMITED]
 # Quick end-to-end check of the pipeline
-SWEEPS["smoke"] = [("A", PARTIAL_RHO, 0), ("D", PARTIAL_RHO, 0), ("B", PARTIAL_RHO, 0), ("R5", PARTIAL_RHO, 0), ("F5", PARTIAL_RHO, 0)]
+SWEEPS["smoke"] = [(s, MAIN_RHO, 0) for s in ("A", "D", "B", "R5", "F5")]
 SWEEPS["all"] = list(dict.fromkeys(
     SWEEPS["budget"] + SWEEPS["rule"] + SWEEPS["fixed"] + SWEEPS["delay"] + SWEEPS["obs"]))
 

@@ -11,7 +11,7 @@ episodes with an assisted goal), mean over seeds with a 95% t-interval;
 p-values are Welch t-tests against A (no communication) at the same rho.
 
 Usage:
-    python -m utils.report --dir checkpoints/sweep_final [--before checkpoints/sweep_assist]
+    python -m utils.report --dir checkpoints/sweep_v4 [--before <earlier sweep>]
 """
 
 import sys, os
@@ -362,7 +362,8 @@ def build_report(base, before=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dir", default="checkpoints/sweep_v4")
-    parser.add_argument("--before", default="checkpoints/sweep_assist",
-                        help="earlier sweep shown as 'before fix' in the send-timing figure")
+    parser.add_argument("--before", default=None,
+                        help="earlier sweep with the same observation layout, shown as 'before fix' "
+                             "in the send-timing figure")
     args = parser.parse_args()
     build_report(args.dir, args.before if args.before and os.path.isdir(args.before) else None)

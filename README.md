@@ -43,8 +43,8 @@ python -m experiments.run_all --sweep budget --workers 12   # RQ1
 python -m experiments.run_all --sweep all --workers 12      # RQ1-RQ3
 
 # Re-summarise / re-plot an existing sweep
-python utils/plot_results.py --dir checkpoints/sweep_v2 --save
-python -m utils.report --dir checkpoints/sweep_v2   # figures/ + results.md
+python utils/plot_results.py --dir checkpoints/sweep_v4 --save
+python -m utils.report --dir checkpoints/sweep_v4   # figures/ + results.md
 ```
 
 ---

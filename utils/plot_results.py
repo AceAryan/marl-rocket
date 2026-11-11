@@ -77,6 +77,52 @@ def welch_p(a, b):
     df = (va + vb) ** 2 / (va ** 2 / (len(a) - 1) + vb ** 2 / (len(b) - 1))
     return float(t_sf2(t, df))
 
+
+def _ranks(x):
+    """Ranks starting at 1, ties get their average rank."""
+    order = np.argsort(x, kind="mergesort")
+    ranks = np.empty(len(x), np.float64)
+    sx = x[order]
+    i = 0
+    while i < len(x):
+        j = i
+        while j + 1 < len(x) and sx[j + 1] == sx[i]:
+            j += 1
+        ranks[order[i:j + 1]] = 0.5 * (i + j) + 1.0
+        i = j + 1
+    return ranks
+
+
+def mannwhitney_p(a, b, exact_limit=200_000):
+    """Two-sided Mann-Whitney U (rank-sum) p-value. Robust to the occasional
+    collapsed seed, which can dominate a t-test on means. Exact (enumerating
+    every split of the pooled ranks, ties included) when the number of splits
+    is at most `exact_limit`, e.g. 10 vs 10 seeds; normal approximation with
+    tie and continuity corrections otherwise."""
+    a, b = np.asarray(a, np.float64), np.asarray(b, np.float64)
+    n1, n2 = len(a), len(b)
+    if n1 < 1 or n2 < 1:
+        return np.nan
+    ranks = _ranks(np.concatenate([a, b]))
+    r1 = ranks[:n1].sum()
+    mean_r1 = n1 * (n1 + n2 + 1) / 2.0
+    dev = abs(r1 - mean_r1)
+    if math.comb(n1 + n2, n1) <= exact_limit:
+        from itertools import combinations
+        count = total = 0
+        for idx in combinations(range(n1 + n2), n1):
+            total += 1
+            if abs(ranks[list(idx)].sum() - mean_r1) >= dev - 1e-9:
+                count += 1
+        return count / total
+    n = n1 + n2
+    _, tie_counts = np.unique(ranks, return_counts=True)
+    var = n1 * n2 / 12.0 * ((n + 1) - np.sum(tie_counts ** 3 - tie_counts) / (n * (n - 1)))
+    if var <= 0:
+        return 1.0
+    z = max(dev - 0.5, 0.0) / math.sqrt(var)
+    return float(math.erfc(z / math.sqrt(2.0)))
+
 # x-axis order of the saturation curve: (setting, budget label)
 BUDGET_ORDER = [("A", "0"), ("D2", "2"), ("D5", "5"), ("D10", "10"), ("D", "20"), ("B", "inf")]
 SETTING_ORDER = ["A", "D2", "D5", "D10", "D", "C", "B", "R2", "R5", "R10", "R20", "Rinf",

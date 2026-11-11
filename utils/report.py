@@ -7,8 +7,10 @@ Writes into <dir>/figures/:
 and <dir>/results.md (one table per research question).
 
 The primary metric is the final greedy goal rate (share of 200 held-out
-episodes with an assisted goal), mean over seeds with a 95% t-interval;
-p-values are Welch t-tests against A (no communication) at the same rho.
+episodes with an assisted goal). Per configuration: the median over seeds with
+its interquartile range (robust to the occasional collapsed seed), plus the
+mean with a 95% t-interval; p-values are two-sided Mann-Whitney U tests
+against A (no communication) at the same rho.
 
 Usage:
     python -m utils.report --dir checkpoints/sweep_v4 [--before <earlier sweep>]
@@ -20,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import argparse
 import numpy as np
 
-from utils.plot_results import load_histories, group_runs, _ci95, welch_p
+from utils.plot_results import load_histories, group_runs, _ci95, mannwhitney_p
 
 PARTIAL = 0.15
 LOW = 0.1   # lowest observation radius, where shared sightings matter most
@@ -46,25 +48,30 @@ def goal_rates(runs, field="final_eval"):
     return [100.0 * h[field]["goal_rate"] for h in runs if field in h]
 
 
+COLLAPSED = 50.0   # a run below this final goal rate (%) counts as collapsed
+
+
 def cell(groups, key):
-    """Mean and CI of the final goal rate (%) for one configuration, or None."""
+    """(median, median - q25, q75 - median, n) of the final goal rate (%) for
+    one configuration, or None."""
     runs = groups.get(key)
     if not runs:
         return None
-    g = goal_rates(runs)
-    return float(np.mean(g)), _ci95(g), len(g)
+    g = np.asarray(goal_rates(runs))
+    q25, med, q75 = np.percentile(g, [25, 50, 75])
+    return float(med), float(med - q25), float(q75 - med), len(g)
 
 
 def p_vs_a(groups, key):
     runs, base = groups.get(key), groups.get((key[0], 0, "A"))
     if not runs or not base or key[2] == "A":
         return np.nan
-    return welch_p(goal_rates(runs), goal_rates(base))
+    return mannwhitney_p(goal_rates(runs), goal_rates(base))
 
 
 # ------------------------------------------------------------------ figures
 
-def _style(ax, title, xlabel, ylabel="Final goal rate (%)"):
+def _style(ax, title, xlabel, ylabel="Final goal rate (%), median and IQR"):
     ax.set_title(title, loc="left", fontsize=12, fontweight="bold", color="#0b0b0b")
     ax.set_xlabel(xlabel, color="#52514e")
     ax.set_ylabel(ylabel, color="#52514e")
@@ -85,7 +92,7 @@ def _series(ax, xs, cells, color, marker, label, ls="-"):
         return
     x = [p[0] for p in pts]
     m = [p[1][0] for p in pts]
-    e = [p[1][1] for p in pts]
+    e = [[p[1][1] for p in pts], [p[1][2] for p in pts]]   # interquartile range
     ax.errorbar(x, m, yerr=e, color=color, marker=marker, ms=8, lw=2, ls=ls, capsize=4,
                 label=label, markeredgecolor="white", markeredgewidth=1.2)
 
@@ -94,7 +101,7 @@ def _a_line(ax, groups, rho, xmax, ls="--", suffix=""):
     c = cell(groups, (rho, 0, "A"))
     if c:
         ax.axhline(c[0], color=GRAY, ls=ls, lw=1.5, label=f"A: no communication{suffix} ({c[0]:.0f}%)")
-        ax.axhspan(c[0] - c[1], c[0] + c[1], color=GRAY, alpha=0.08, lw=0)
+        ax.axhspan(c[0] - c[1], c[0] + c[2], color=GRAY, alpha=0.08, lw=0)
 
 
 def fig_budget(plt, groups, out):
@@ -267,22 +274,25 @@ def fig_send_timing(plt, base, before, out, setting="D5", fixed="F5"):
 
 def _row(groups, key, label=None):
     runs = groups[key]
-    g = goal_rates(runs)
+    g = np.asarray(goal_rates(runs))
     sil = goal_rates(runs, "final_eval_silenced")
     a = groups.get((key[0], 0, "A"))
-    diff = np.mean(g) - np.mean(goal_rates(a)) if a and key[2] != "A" else np.nan
+    diff = np.median(g) - np.median(goal_rates(a)) if a and key[2] != "A" else np.nan
+    q25, med, q75 = np.percentile(g, [25, 50, 75])
     p = p_vs_a(groups, key)
     ep_len = np.mean([h["final_eval"]["episode_length"] for h in runs])
     msgs = np.mean([h["final_eval"]["msgs_mean"] for h in runs]) / 2
     fmt = lambda v, f: "-" if v is None or (isinstance(v, float) and np.isnan(v)) else format(v, f)
     star = "" if np.isnan(p) else (" **" if p < 0.01 else " *" if p < 0.05 else "")
-    return (f"| {label or LABELS.get(key[2], key[2])} | {len(g)} | {np.mean(g):.1f} ± {_ci95(g):.1f} | "
-            f"{fmt(diff, '+.1f')}{star} | {fmt(p, '.3f')} | {ep_len:.0f} | {msgs:.1f} | "
-            f"{fmt(np.mean(sil) if sil else None, '.1f')} |")
+    return (f"| {label or LABELS.get(key[2], key[2])} | {len(g)} | {med:.1f} [{q25:.0f}-{q75:.0f}] | "
+            f"{np.mean(g):.1f} ± {_ci95(g):.1f} | {fmt(diff, '+.1f')}{star} | {fmt(p, '.3f')} | "
+            f"{int(np.sum(g < COLLAPSED))} | {ep_len:.0f} | {msgs:.1f} | "
+            f"{fmt(float(np.median(sil)) if sil else None, '.1f')} |")
 
 
-HEADER = ("| Setting | Seeds | Goal rate % (95% CI) | Δ vs A (pp) | p | Steps to goal | "
-          "Msgs/agent | Goal % silenced |\n|---|---|---|---|---|---|---|---|")
+HEADER = ("| Setting | Seeds | Goal % median [IQR] | Mean ± 95% CI | Δ median vs A (pp) | p | "
+          "Collapsed | Steps to goal | Msgs/agent | Goal % silenced |\n"
+          "|---|---|---|---|---|---|---|---|---|---|")
 
 
 def write_results_md(groups, base, timing_rows=None):
@@ -290,8 +300,10 @@ def write_results_md(groups, base, timing_rows=None):
              "Each run keeps the policy snapshot with the best goal rate on the periodic "
              "validation episodes; it is then scored on 200 separate held-out episodes. "
              "Goal rate = share of "
-             "episodes with an assisted goal. Δ and p: Welch t-test against A at the same "
-             "observation radius (* p<0.05, ** p<0.01). Steps to goal = mean episode length "
+             "episodes with an assisted goal; median over seeds with its interquartile range, "
+             "and the mean with a 95% t-interval. Δ: difference in medians from A at the same "
+             "observation radius; p: two-sided Mann-Whitney U test against A (* p<0.05, "
+             "** p<0.01). Collapsed = seeds below 50% goals. Steps to goal = mean episode length "
              "(80 = no goal). *Goal % silenced* = the same policy evaluated with the channel "
              "muted (how much it relies on messages).", ""]
 
@@ -323,7 +335,7 @@ def write_results_md(groups, base, timing_rows=None):
                 c = cell(groups, (r, 0, s))
                 p = p_vs_a(groups, (r, 0, s))
                 star = "" if np.isnan(p) else (" **" if p < 0.01 else " *" if p < 0.05 else "")
-                cells.append("-" if c is None else f"{c[0]:.1f} ± {c[1]:.1f}{star}")
+                cells.append("-" if c is None else f"{c[0]:.1f} [{c[0] - c[1]:.0f}-{c[0] + c[2]:.0f}]{star}")
             lines.append(f"| {r:g} | " + " | ".join(cells) + " |")
         lines.append("")
     if timing_rows:

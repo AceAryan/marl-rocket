@@ -267,39 +267,49 @@ def test_nstep_accumulator():
     out = acc.push("o3", 0, 8.0, "o4", True, False)
     assert [t[0] for t in out] == ["o1", "o2", "o3"] and all(t[4] for t in out)
     assert np.isclose(out[-1][2], 8.0)
-    print("ok  n-step returns")
+    # The time limit is terminal too (remaining time is observed): no bootstrapping past it
+    acc.reset()
+    acc.push("a", 0, 1.0, "b", False, False)
+    out = acc.push("b", 0, 1.0, "c", False, True)
+    assert len(out) == 2 and all(t[4] for t in out)
+    print("ok  n-step returns (terminal at the time limit)")
 
 
-def test_agent_learns_and_messages():
+def test_agent_learns_and_gates():
     agent = DQNAgent(obs_dim=OBS_DIM, n_actions=N_ACTIONS, batch_size=8, learning_starts=8)
+    agent.gate.learning_starts = 8
+    agent.gate.batch_size = 8
     rng = np.random.default_rng(0)
-    before = agent.q_net.params[0].copy()
+    before_q = agent.q_net.flat.copy()
+    before_g = agent.msg_net.flat.copy()
     for t in range(20):
         o, o2 = rng.normal(size=(2, OBS_DIM)).astype(np.float32)
         agent.store(o, rng.integers(N_ACTIONS), 1.0, o2, terminated=(t == 19))
-        if t % 2 == 0:
-            agent.message_decision(o, 1)
-        agent.message_reward(1.0)
-    agent.end_episode(o2)
-    assert agent.update() is not None and agent.update_message_head() is not None
-    assert not np.array_equal(before, agent.q_net.params[0])
-    # first message option spans 2 steps of reward 1
-    assert np.isclose(agent.msg_buffer.rew[0], 1 + 0.99)
-    assert agent.msg_buffer.done[len(agent.msg_buffer) - 1] == 1.0
-    print("ok  DQNAgent updates action and message heads")
+        agent.gate.push(o, 1, 0.5)
+    agent.end_episode()
+    assert agent.update() is not None and agent.update_gate() is not None
+    assert not np.array_equal(before_q, agent.q_net.flat)
+    assert not np.array_equal(before_g, agent.msg_net.flat)
+    assert agent.learner.buffer.done[len(agent.learner.buffer) - 1] == 1.0
+    print("ok  DQNAgent updates its Q-network and message gate")
 
 
 def test_evaluate_is_side_effect_free():
-    env = RocketEnv(max_steps=30)
-    agents = [DQNAgent(OBS_DIM, N_ACTIONS, agent_id=i) for i in range(2)]
-    for a in agents:
-        a.eps = 0.7
-    m1 = evaluate(agents, env, n_eval=3)
-    m2 = evaluate(agents, env, n_eval=3)
-    assert m1 == m2, "evaluation should be deterministic"
-    assert all(a.eps == 0.7 and len(a.buffer) == 0 for a in agents)
-    silent = evaluate(agents, env, n_eval=3, silence=True)
-    assert silent["msgs_mean"] == 0
+    from agents.dqn_agent import make_agents
+    from experiments.train import make_env
+    for setting in ("L4", "Finf"):
+        env = make_env(setting, obs_frac=0.25, max_steps=30)
+        agents = make_agents(OBS_DIM, N_ACTIONS)
+        for a in agents:
+            a.eps = 0.7
+        kind = "learned" if setting == "L4" else "fixed"
+        m1 = evaluate(agents, env, n_eval=3, sender=kind)
+        m2 = evaluate(agents, env, n_eval=3, sender=kind)
+        assert m1 == m2, "evaluation should be deterministic"
+        assert all(a.eps == 0.7 for a in agents) and len(agents[0].learner.buffer) == 0
+        assert evaluate(agents, env, n_eval=3, silence=True, sender=kind)["msgs_mean"] == 0
+        shuffled = evaluate(agents, env, n_eval=3, shuffle=True, sender=kind)
+        assert set(shuffled) == set(m1) and env.payload_hook is None
     print("ok  evaluation is deterministic and side-effect free")
 
 
@@ -307,10 +317,12 @@ def test_train_end_to_end():
     with tempfile.TemporaryDirectory() as tmp:
         h = train(setting="D", n_episodes=4, max_steps=25, save_dir=tmp, eval_every=2,
                   n_eval_episodes=2, n_final_eval=2, verbose=False)
-        assert {"final_eval", "final_eval_silenced"} <= set(h)
+        assert {"final_eval", "final_eval_last", "final_eval_shuffled"} <= set(h)
         with open(os.path.join(tmp, "history.json")) as f:
-            assert json.load(f)["eval_episode"] == [2, 4]
+            saved = json.load(f)
+        assert saved["eval_episode"] == [2, 4] and saved["label"] == "D" and saved["config"]["seed"] == 42
         assert os.path.exists(os.path.join(tmp, "agent1_q.npz"))
+        assert not os.path.exists(os.path.join(tmp, "history.json.tmp"))
     print("ok  train() end-to-end")
 
 

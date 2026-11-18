@@ -207,6 +207,9 @@ class RocketEnv(gym.Env):
         self.budget_obs = budget_obs
         self.match = match
         self.render_mode = render_mode
+        # Optional callable (i, payload, touch_step, step) -> (payload, touch_step), applied to
+        # every outgoing message; used only by evaluation to record or shuffle message content.
+        self.payload_hook = None
 
         self._obs_size = OBS_DIM
         obs_low = np.full(OBS_DIM, -1.0, dtype=np.float32)
@@ -261,7 +264,10 @@ class RocketEnv(gym.Env):
         if messages is not None:
             for i, token in enumerate(messages):
                 if token != 0 and allowed[i]:
-                    outgoing.append((i, int(token), self._payload(i), self._step_count, self._last_touch[i]))
+                    payload, touch = self._payload(i), self._last_touch[i]
+                    if self.payload_hook is not None:   # evaluation ablations (record / shuffle content)
+                        payload, touch = self.payload_hook(i, payload, touch, self._step_count)
+                    outgoing.append((i, int(token), payload, self._step_count, touch))
         # Potentials of the state the step starts from. Computed before the clock
         # advances, so an assist that expires during this step is charged.
         prev_potential = self._potential()

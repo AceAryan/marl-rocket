@@ -2,7 +2,9 @@
 
 > *How does limiting communication affect the ability of cooperative RL agents to learn effective coordination?*
 
-A 2D multi-agent environment inspired by Rocket League, built for systematic experiments on communication constraints in cooperative MARL.
+A 2D two-agent soccer environment inspired by Rocket League, built for controlled experiments on message
+budgets in cooperative multi-agent RL: two learning agents with a small field of view share a team reward and
+may send budgeted messages ("here is what I see") to each other.
 
 ---
 
@@ -10,238 +12,208 @@ A 2D multi-agent environment inspired by Rocket League, built for systematic exp
 
 ```
 marl-rocket/
-├── env/
-│   └── rocket_env.py        # Gymnasium-style 2D environment
-├── agents/
-│   └── dqn_agent.py         # numpy independent DQN + message head
+├── env/rocket_env.py          # environment (partial view, memory, budgeted channel, match mode)
+├── agents/dqn_agent.py        # numpy Double DQN, optional parameter sharing, learned message gate
 ├── experiments/
-│   ├── train.py             # Single-setting training loop
-│   └── run_all.py           # Budget sweeps at full and partial visibility
+│   ├── train.py               # one training run (one setting, one seed)
+│   ├── config.py              # every sweep: pilot, main tiers 1-4, smoke
+│   ├── run_all.py             # parallel, resumable sweeps
+│   └── scripted.py            # random and hand-coded reference teams
 ├── utils/
-│   ├── plot_results.py      # summary.csv + combined results.png
-│   └── report.py            # per-RQ figures + results.md tables
-├── tests/
-│   └── test_env.py          # Smoke tests
-└── requirements.txt
+│   ├── plot_results.py        # loading, statistics, summary.csv
+│   └── report.py              # figures + results.md; pilot decision rules
+└── tests/                     # pytest suite
 ```
-
----
 
 ## Quick start
 
 ```bash
 pip install -r requirements.txt
+python -m pytest tests -q
 
-# Unit / smoke tests
-python tests/test_env.py
+# One run
+python -m experiments.train --setting L4 --obs_frac 0.075
 
-# Train one setting (A, D2..D, C, B learned; R2..Rinf rule; F2..Finf fixed)
-python -m experiments.train --setting B --obs_frac 0.15
-
-# Run a sweep in parallel (resumable; finished runs are skipped)
-python -m experiments.run_all --sweep budget --workers 12   # RQ1
-python -m experiments.run_all --sweep all --workers 12      # RQ1-RQ3
-
-# Re-summarise / re-plot an existing sweep
-python utils/plot_results.py --dir checkpoints/sweep_v4 --save
-python -m utils.report --dir checkpoints/sweep_v4   # figures/ + results.md
+# Sweeps (resumable: re-run the same command after an interruption)
+python -m experiments.run_all --sweep pilot --save_dir checkpoints/pilot_v6 --workers 20
+python -m utils.report --dir checkpoints/pilot_v6 --pilot          # applies the pilot rules
+python -m experiments.run_all --sweep tier1 --workers 20            # then tier2, tier3, tier4
+python -m utils.report --dir checkpoints/sweep_v5                  # figures/ + results.md
 ```
+
+A run takes about 4-8 minutes (single-goal, 10k episodes) on one core; `run_all` keeps the PC awake while
+it works and rebuilds its worker pool if a worker dies.
 
 ---
 
 ## Environment
 
-20 x 30 field; the team attacks the goal at y = 30 (width 8). Spawn positions
-are randomised. Ball physics are dribble-able (kick speed 1.1, friction 0.90,
-about 11 units of travel per touch), so outcomes depend on control rather than
-ricochets.
+20 x 30 field; the team attacks the goal at y = 30 (width 8). Agents spawn in their own half, the ball in
+a random spot of the midfield band. Ball physics are dribble-able (kick speed 1.1, friction 0.9, about 11
+units of travel per touch). Actions: noop, up, down, left, right, boost (fast up).
 
-**Assist-based scoring** (`assist_required=True`, the default): a goal only
-counts if the teammate touched the ball within the last 40 steps (and the
-opponent, if present, has not touched it since); an unassisted shot bounces
-off the goal line. Without this rule one agent can find the ball and score
-alone, so a teammate's information is nearly worthless (see the calibration
-below).
+**Assist-based scoring**: a goal counts only if the scorer's teammate touched the ball within the last 40
+steps; an unassisted shot bounces off the goal line. Without it one agent can score alone and its teammate's
+information is nearly worthless. No opponent in the experiments (`--opponent` adds a scripted keeper; with
+it, the task was not learnable).
 
-**Opponent**: off by default (`--opponent` in `train.py` enables a scripted
-keeper confined to y >= 21 that clears the ball toward the team goal). With
-assist-based scoring *and* the keeper, independent DQN learned nothing in
-4000 episodes (0-5% goals, with or without an assist curriculum); without the
-keeper, assisted scoring is learned reliably (80-96% goals by episode 2000).
+**Partial view**: an agent sees the ball, its teammate (and the opponent) only within rho x the field
+diagonal (rho = 0.075 is a radius of 2.7 units, far less than one kick).
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `n_agents` | 2 | Cooperative team size (1 or 2) |
-| `obs_frac` | 1.0 | Observation radius rho as a fraction of the field diagonal |
-| `comm_budget` | None | Max messages per agent per episode (None = unlimited) |
-| `comm_delay` | 0 | A message sent at step t is observed at step t + delay |
-| `comm_every` | 1 | Messages can only be sent every k steps |
-| `max_steps` | 80 | Episode length cap (`MAX_STEPS`) |
-| `assist_required` | True | Only assisted goals count |
-| `opponent` | True (env) / False (`train.py`) | Scripted keeper |
+**Observation** (45 floats, `OBS_SLICES`): own position; teammate, ball (position, velocity, position
+relative to me) when in view; the last received message (sighting, sender position, sender's last touch,
+age); **own messages left (fraction and log-count) and the teammate's messages left, inferred from the
+messages received** (feedback 2; `budget_obs=False` hides them for an ablation); remaining time;
+assist flags; steps since my last send; and a memory of the last known ball and teammate positions with
+their age, from own sightings or messages, whichever is newer.
 
-**Observation** (42 floats, `OBS_SLICES` in `env/rocket_env.py`): own position;
-teammate, ball (+ velocity and position relative to self) and opponent, each with a
-visibility flag and masked to zero when farther than rho x diagonal; the last
-received message (token one-hot, the sender's ball sighting and position, and its age;
-a message expires after 10 steps, so a spent budget cannot leave a stale
-sighting in the observation for the rest of the episode);
-remaining budget fraction; remaining time fraction; assist flags (my teammate
-touched recently, so my goal would count; I touched recently, so my teammate's
-would; whether this episode requires assists); steps since my last send (capped at the
-10-step message lifetime); and a memory: the last known ball position (absolute and
-relative to me) and last known teammate position, each with its age (capped at 40
-steps), from my own sightings or received messages, whichever is newer. The memory
-only summarises what the agent has already observed; without it, a message vanished
-from a memoryless policy's input after 10 steps, so sparse or stale messages
-(budgets, schedules of every 8-16 steps) did worse than no communication.
-`memory=False` (`--no_memory`) blanks it for an ablation.
+The assist flags use only what an agent can know: its own touches, teammate touches it saw, and touches a
+message reported ("I touched it" is part of every message, so it costs budget). Before v5 every setting,
+including no communication, saw the teammate's true touches through this flag (a free channel).
 
-**Actions**: noop, up, down, left, right, boost (fast up).
+**Messages**: a message carries what the sender observed when it decided to send: its view of the ball,
+its own position and its last touch. It is delivered after `comm_delay` steps, shown for 10 steps, and
+written into the receiver's memory. Budgets count messages per agent per episode; sends that could not
+arrive before the last decision are refused.
 
-**Messages**: the environment's vocabulary is none, attack, defend, pass, rotate.
-A sent message carries the sender's current view of the ball and its own
-position ("I'm here, the ball is there"), so communication has real
-informational value under partial observability. The learned message head
-chooses only silent or send (token 1): the tokens carried no extra content, and
-letting the head pick among four interchangeable tokens fed the receiver an
-arbitrary, drifting one-hot input that slowed its learning.
+**Match mode** (`match=True`, 200 steps): a goal does not end the episode; play restarts like a kickoff
+(agents back in their half, ball dropped at a random midfield spot, memories cleared) while the clock and
+the message budgets carry on. The score is goals per match.
 
-**Learned sender (IQL-Comm)**: a per-agent message Q-head, trained with SMDP
-Q-learning between decision points, decides *when* to spend the budget. Two
-changes made it learn reliably:
+**Reward** (shared): +100 per goal, a small proximity bonus and two potential-based shaping terms (ball
+toward the goal and agents toward the ball; +20 potential while a live assist exists). Training uses reward
+x 0.1; reported metrics are goals, never shaped return.
 
-- *Value-of-information credit* (`msg_credit="voi"`): each step the teammate
-  holds my message, I am credited with how much it improves the teammate's
-  decision, Q_j(o, a*) - Q_j(o, a_cf), where a_cf is the action the teammate
-  would take with the message masked out (its own Q-network, i.e. centralised
-  training), minus a cost of 0.05 per message. This replaces the noisy, delayed
-  team reward (`msg_credit="team"`, the original credit). The sender also
-  observes the steps since its last send, so it can tell when the teammate's
-  copy has expired.
-- *Rule-to-learned handover* (`msg_handover=0.5`): during the first half of
-  training, a send-on-sight rule makes each decision with probability p, which
-  falls linearly from 1 to 0; the head learns off-policy from every decision.
-  Without it, sender and receiver co-adapt: the receiver learns against a send
-  pattern that keeps shifting, and runs were unstable (some seeds collapsed to
-  under 10% goals). Evaluation always uses the head alone.
+## Agents and training
 
-Learned communication is **event-triggered**: an agent makes a message decision
-only at steps where it may send and currently sees the ball; otherwise it stays
-silent. Message exploration is silence-biased (an exploratory pick is silent
-half the time). Without these, greedy D5 agents sent 65% of their budget in the
-first 10 steps and about half their messages without seeing the ball (empty
-sightings), so budgeted settings did worse than no communication
-(`checkpoints/sweep_assist`, kept as the "before" result).
+Double DQN with 3-step returns, numpy MLPs (128-128), Adam, Polyak targets, one gradient step every 2 env
+steps, epsilon decaying to 0.05 over the first 10% of episodes. Each network keeps its parameters in one
+flat vector, so a training run is about 5-8x faster than before v5. By default the two agents **share
+parameters** (one Q-network with an agent-id input; batch and buffer doubled so each agent's data is
+replayed as often as with separate networks), as in RIAL/DIAL, CommNet and IC3Net; execution stays
+decentralised. The time limit is treated as terminal because the remaining time is observed.
 
-**Episodes are 80 steps** (`MAX_STEPS`), a match clock: with 200 steps nearly
-every team eventually scored, which hid the speed difference that information
-buys. At 80 steps, a scripted check of no-communication policies scored 94% with
-full view but 78% at rho = 0.15 and 66% at rho = 0.10 (at 200 steps: 99 / 94 / 73).
+### How the message choice is trained (feedback 3)
 
-**Reward** (shared): +100 goal, -100 concede, +0.1 per step while a teammate is
-within 2 units of the ball, plus two potential-based shaping terms:
+Agents do not choose message *content*: a message always carries the sender's current sighting. A learned
+sender (`L<B>`) only decides **when** to spend its budget. It is event-triggered: it makes a decision only
+at steps where it may send and currently sees the ball, and stays silent otherwise.
 
-- Phi(s') - Phi(s) with Phi = -dist(ball, goal) - 0.5 * mean dist(teammate,
-  ball). Undiscounted on purpose: with Phi < 0, the discounted form
-  gamma * Phi(s') - Phi(s) pays (1 - gamma)|Phi| every step, i.e. it rewards
-  idling far from the ball.
-- gamma * Phi_a(s') - Phi_a(s) with Phi_a = 20 while a live assist exists (a goal
-  by the last toucher would count). This pays out on the pass itself, which is
-  otherwise invisible until a goal. It is discount-consistent on purpose: with
-  the undiscounted form, creating an assist and letting it expire nets
-  +20(1 - gamma^40) per cycle, and agents learned to farm passes in midfield.
+The decision is made by a **message gate**, a small network that scores how much sending now is worth to
+the team; the agent sends when the score exceeds a per-message cost (0.05 in training-reward units). The
+gate is *not* trained by DQN and does not learn from bootstrapped replay targets, so there is no
+on-policy/off-policy contradiction:
 
-Training uses reward x 0.1; all reported returns are unshaped task reward.
+- **Counterfactual credit** (`msg_credit="rollout"`, centralised training): at up to two randomly chosen
+  decision points per agent per episode, the simulator is copied twice; one copy delivers the message and
+  the other withholds it, both continue for 40 steps with the agents' current greedy policies (including
+  later gate decisions and the same budgets), and the gate regresses the **difference in discounted team
+  reward**. This is a difference reward that uses only the team reward and directly prices the budget a
+  send uses up.
+- **Team-return credit** (`msg_credit="team"`, the proposal's original idea): the gate regresses the
+  Monte-Carlo team return that followed each send or silent decision.
 
-**Scripted calibration** (no keeper, 300 episodes): memoryless hand-coded teams
-that act only on their own observations (pass toward the teammate's known
-position, shoot when assist-eligible, otherwise go to the ball's known position
-or search). Goal rate by message budget, spreading B messages evenly:
+The pilot picks between the two (rule below). Early in training a hand-coded rule makes the decisions with
+probability falling from 1 to 0 over the first 30% of episodes, so receivers first learn against a sensible
+sender; the gate learns from all decisions because its targets do not depend on who decided.
+The action networks are ordinary off-policy DQN learners trained from replay buffers.
 
-| rho | B=0 | B=5 | B=20 | B=50 | unlimited |
-|-----|-----|-----|------|------|-----------|
-| 1.0 | 0.96 | 0.96 | 0.96 | 0.96 | 0.96 |
-| 0.25 | 0.90 | 0.98 | 0.98 | 0.98 | 0.98 |
-| 0.15 | 0.43 | 0.59 | 0.92 | 0.95 | 0.91 |
-| 0.10 | 0.16 | 0.23 | 0.55 | 0.67 | 0.67 |
-
-Without assist-based scoring, sharing sightings changed scripted goal rate by
-at most 5 points at any rho, which is why the earlier (no-assist) sweep showed
-no benefit from communication.
-
-**RL check** (rho = 0.15, no keeper, 4000 episodes, 2 seeds): B reaches 0.94 /
-0.99 final goal rate (episode length 79 / 53) against A's 0.76 / 0.94 (101 /
-63). B starts slower, since it must also learn when to message, but converges
-higher.
-
----
+Before v5 the gate was a Q-head credited with the receiver's own Q-difference with and without the
+message. That credit is never negative and, as a check that forked the game at real sends showed, had
+about zero correlation with a message's actual effect on the outcome; it also left the message in the
+receiver's memory when computing "without the message".
 
 ## Communication settings
 
-Budgets are messages per agent per 80-step episode.
+Budgets are messages per agent per episode (per match in match mode).
 
-| Setting | Sender | Budget | Description |
-|---------|--------|--------|-------------|
-| **A** | - | 0 | No communication |
-| **D2 / D5 / D10 / D** | learned | 2 / 5 / 10 / 20 | Learned sender under a budget (D = proposal setting D) |
-| **C** | learned | inf, every 5 steps | Periodic (proposal setting C) |
-| **B** | learned | inf | Unlimited (proposal setting B) |
-| **R2 / R5 / R10 / R20 / Rinf** | rule | 2 / 5 / 10 / 20 / inf | Send whenever allowed and seeing the ball, until the budget is spent |
-| **F2 / F5 / F10 / F20 / Finf** | fixed | every 40 / 16 / 8 / 4 / 1 steps | Broadcast every k steps (80/k messages), sighting or not |
+| Setting | Sender | Description |
+|---|---|---|
+| **A** | - | No communication |
+| **L\<B\>** | learned gate | Event-triggered; the gate decides when to spend the budget B (`Linf`: unlimited) |
+| **R\<B\>** | rule | Send on sight when the teammate's copy of my last message has expired, until B is spent |
+| **F\<B\>** | fixed | Broadcast every ceil(T/B) steps, sighting or not (B usable messages) |
+| **B / C / D** | learned | Proposal settings: Linf; learned, every 5 steps; L20 |
 
-The three kinds of sender separate the questions: F* measure the value of the
-information itself, R* add a sensible hand-coded trigger, and the learned
-senders must also discover *when* to send.
+The three senders separate the questions: F measures the value of the information itself, R adds a
+sensible trigger, and L must also learn when to send.
 
-## Sweeps (`experiments/run_all.py --sweep ...`)
+## Experiments
 
-| Sweep | Runs | Question |
-|-------|------|----------|
-| `budget` | A, D2..D, C, B at rho = 0.075 | RQ1: saturation point, learned sender |
-| `rule` | R2..Rinf at rho = 0.075 | RQ1, rule sender |
-| `fixed` | F2..Finf at rho = 0.075 | RQ1, fixed schedule |
-| `delay` | A; B, Rinf, Finf with delay in {0, 2, 5}, rho = 0.075 | RQ2: delay |
-| `obs` | A, B, Rinf, Finf x rho in {1.0, 0.15, 0.10, 0.075} | RQ3: observability |
-| `pilot` | A, B, Rinf, Finf at rho = 0.075 | headroom check at the main radius |
-| `smoke` | A, D, B, R5, F5 at rho = 0.075 | quick pipeline check |
-| `all` | union of the above (35 configurations, 350 runs at 10 seeds) | |
+### Pilot (pre-registered; seeds 100-102, disjoint from the main seeds)
 
-Results go to `checkpoints/sweep_v4/` (`summary.csv`, `results.png`, `results.md`, `figures/`). Earlier sweeps (`sweep_final`, `sweep_v2`, `sweep_v3`: no memory, shorter training) are incompatible with the current code; don't resume into them. Default: 10 seeds (0-9), 10,000
-episodes per run (channel settings learn more slowly than A at first). Agents are independent Double
-DQN (numpy MLPs, 128-128 hidden; faster than PyTorch for networks this small on
-CPU) with 3-step returns, Polyak target updates, one gradient step every 2 env
-steps; epsilon decays linearly to 0.05 over the first 10% of episodes. Every periodic greedy evaluation uses the
-same 100 fixed validation episodes, and the snapshot with the best validation goal rate is kept; after training it gets a 200-episode final
-evaluation on held-out seeds, plus the same evaluation with the channel
-silenced (the return drop measures reliance on communication). `summary.csv`
-reports per-configuration means with 95% CIs, goal/concede rates, mean episode
-length (time to goal), messages per episode, role separation, silenced drop,
-learning-curve AUC (mean periodic greedy return, i.e. sample efficiency), and
-Welch t-tests of final return and AUC against A. Final returns can saturate
-near +100 once a setting learns reliably, so AUC and episode length are the
-metrics with headroom.
+Written before the pilot was run; `python -m utils.report --dir <pilot> --pilot` applies the rules.
+
+- **P1 parameter sharing**: single-goal, rho 0.075, A and Finf, shared vs independent learners. Sharing is
+  kept unless it is more than 2 pp worse in median score or learning-curve AUC for either.
+- **P2 regime**: {single-goal 80 steps, match 200 steps} x rho {0.06, 0.075, 0.1} x {A, Finf}. Choose the
+  regime with the largest relative gap (median Finf - median A) / median A among those where A reaches at
+  least 25% of Finf and no Finf seed collapses (scores under half its configuration's median); keep
+  single-goal unless match mode's gap is at least 1.5x larger.
+- **P3 senders** at rho 0.075 (both modes): R4, Rinf, L4 with each credit, Linf (match mode: budget 10).
+  Credit = the one with the higher median at L4 (L10).
+- **Training length**: the smallest of {10k, 15k} episodes (match: {3.5k, 5k}) at which the median validation
+  curves of A, Finf and L4 move less than 2 pp over the last 20% of training.
+- **Stability**: if more than 10% of pilot runs end with a last policy under half of their selected
+  snapshot, linear learning-rate decay (5e-4 to 1e-4) is switched on.
+- **Budget grid**: about ten roughly log-spaced budgets from 1 to the unlimited senders' median usage, plus
+  unlimited.
+
+### Main sweep (seeds 0-9; `experiments/config.py`)
+
+| Tier | Configurations | Question |
+|---|---|---|
+| 1 | A; L and R over the budget grid; F at 4 budgets + Finf | RQ1: where do more messages stop helping? learned vs rule vs fixed |
+| 2 | L at 3 budgets with the budget features hidden; delay {1,2,4,8} for Linf and Rinf | feedback 2; RQ2 |
+| 3 | A, Linf, Rinf at rho {1.0, 0.25, 0.15, 0.1}; R at a second rho over 4 budgets | RQ3; does the saturation point move with rho |
+| 4 | C (proposal); L4 with the other credit | continuity; credit ablation |
+
+### Analysis (`utils/report.py`)
+
+Each run keeps the snapshot with the best score on 100 fixed validation episodes; it is then scored on 200
+separate held-out episodes, and so is the last policy (the gap shows instability that selection would
+hide). Per configuration: median and interquartile range over seeds, mean with a 95% t-interval.
+Mann-Whitney U tests are Holm-corrected within each table; budget and delay trends use Spearman's rank
+correlation; the observability question uses bootstrap CIs of the communication gain at each rho and of
+its slope against log(rho). The **saturation point** is B90, the budget that reaches 90% of the gain from
+no communication to unlimited, from a fitted `y(B) = y_inf - (y_inf - y0) exp(-B / beta)` with a seed
+bootstrap, reported with the smallest tested budget whose median reaches the same 90%. Reliance on message
+*content* is the drop when messages arrive at the same times but carry another episode's content.
+Reference lines: a random team and a hand-coded team with and without messages.
+
+## Pilot outcome
+
+*(filled in after the pilot)*
+
+## Results
+
+*(filled in after the main sweep; see `checkpoints/sweep_v5/results.md` and `figures/`)*
+
+## What changed in v5, and why the earlier results were weak
+
+Found by a code review with adversarial verification of each finding against the saved runs:
+
+1. **Free channel in the baseline**: the assist flag showed every agent the teammate's true touches, so
+   the no-communication team got decision-relevant teammate information for free (clearing it changed the
+   trained A policy's action in about 64% of the steps where it was set).
+2. **Learned-sender credit did not measure usefulness** (see above), which is why learned senders at small
+   budgets did worse than no communication.
+3. **Time limit bootstrapped** although remaining time is observed (Q at the deadline was erratic).
+4. **Selection hid instability**: 26 of 98 earlier runs ended training below 50% goals, but only 6 after
+   best-snapshot selection; the last policy is now reported too.
+5. **Statistics**: up to 16 uncorrected tests per table, and only tests against A, so neither saturation,
+   delay nor the rho interaction was tested; "silenced" evaluation measured reactions to never-seen inputs.
+6. Smaller fixes: an expiring assist's shaping was never charged back; messages carried the post-step
+   view (12% of decided sends arrived without a sighting); fixed schedules wasted their last message;
+   sweeps died with the worker pool and reused runs regardless of configuration.
 
 ## Deviations from the proposal
 
-- **Assist-based scoring**: a goal counts only if the teammate touched the ball
-  within the last 40 steps. Without it, the shared sightings barely changed
-  scripted goal rates (at most 5 points), so no experiment could detect a benefit
-  from communication.
-- **No scripted keeper** in the main experiments (`--opponent` adds it). With
-  assists plus the keeper, independent DQN learned nothing in 4000 episodes
-  (0-5% goal rate), so concede rate and goal difference are not meaningful.
-- **Event-triggered learned messages** with a silent/send head,
-  value-of-information credit and a rule-to-learned handover (see above), plus
-  **rule (R*) and fixed-schedule (F*) baselines**, which separate the value of
-  the shared information from the cost of learning when to send.
-- **80-step episodes** instead of 200, so speed (and so information) matters,
-  and budgets rescaled to 2-20 messages per episode.
-- The main observation radius is rho = 0.075 (proposal: 0.25; `MAIN_RHO` in
-  `run_all.py`). With memory and 80-step episodes, no communication scores
-  92-96% at rho >= 0.10, which leaves communication no room to help; at 0.075 it
-  falls to about 72% while unlimited communication reaches about 87% (2-seed
-  pilot). At 0.05 no setting learned reliably in 10k episodes.
-- Results are reported as medians with interquartile ranges and Mann-Whitney U
-  tests: about 4% of runs collapse when one agent's Q-function diverges, and a
-  single collapsed seed would dominate a mean or a t-test.
+- **Assist-based scoring** and **no opponent** (see Environment).
+- **Messages carry sightings, the learned part is when to send** (a binary gate) instead of choosing among
+  attack/defend/pass/rotate tokens: interchangeable tokens carried no content.
+- **Message credit**: counterfactual rollouts (or Monte-Carlo team return) instead of DQN on the team reward.
+- **Parameter sharing** between the two learners (decentralised execution kept).
+- **Rule and fixed-schedule senders** added to separate the value of information from learning when to send.
+- **Short episodes / timed matches and a small view radius**, where information has value; a memory of
+  past sightings so that sparse messages are not forgotten after 10 steps.

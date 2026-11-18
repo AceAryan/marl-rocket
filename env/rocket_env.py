@@ -7,6 +7,7 @@ defends the goal at y = 0. A scripted opponent defends y = H and tries to push
 the ball toward y = 0.
 """
 
+import copy
 import math
 import numpy as np
 import gymnasium as gym
@@ -50,6 +51,17 @@ MOVE_DELTAS = np.array(
 # Message vocabulary: 0=none, 1=attack, 2=defend, 3=pass, 4=rotate
 N_MESSAGES = 5
 MSG_TTL = 10             # a received message expires after this many steps
+BUDGET_CAP = 64          # budget_left = log1p(messages left) / log1p(BUDGET_CAP), capped at 1
+
+# Message payload: what the sender knew at the step it decided to send.
+PAYLOAD = {
+    "ball": slice(0, 2),        # ball position (normalised), 0 if not seen
+    "ball_vel": slice(2, 4),    # ball velocity / KICK_SPEED
+    "ball_vis": slice(4, 5),    # did the sender see the ball
+    "sender": slice(5, 7),      # sender's own position (normalised)
+    "touch": slice(7, 8),       # steps since the sender last touched the ball / (ASSIST_WINDOW+1), 1 = none
+}
+PAYLOAD_DIM = 8
 
 # Observation layout (per agent)
 OBS_SLICES = {
@@ -63,14 +75,14 @@ OBS_SLICES = {
     "opp": slice(12, 14),
     "opp_vis": slice(14, 15),
     "msg_token": slice(15, 15 + N_MESSAGES),
-    "msg_ball": slice(20, 24),         # sender's ball pos + vel at send time
+    "msg_ball": slice(20, 24),         # sender's ball pos + vel at its decision step
     "msg_ball_vis": slice(24, 25),     # did the sender see the ball
     "msg_age": slice(25, 26),
-    "budget": slice(26, 27),
+    "budget": slice(26, 27),           # fraction of my budget left (1 = unlimited)
     "time": slice(27, 28),
-    "msg_sender": slice(28, 30),       # sender's own position at send time
-    "assist_me": slice(30, 31),        # teammate touched recently: my goal would count
-    "assist_mate": slice(31, 32),      # I touched recently: teammate's goal would count
+    "msg_sender": slice(28, 30),       # sender's own position at its decision step
+    "assist_me": slice(30, 31),        # a teammate touch I know of makes my goal count next step
+    "assist_mate": slice(31, 32),      # my own touch makes my teammate's goal count next step
     "assist_rule": slice(32, 33),      # this episode requires assisted goals
     "send_age": slice(33, 34),         # steps since my last send / MSG_TTL, capped at 1: whether
                                        # the teammate's copy of my last message has expired
@@ -86,10 +98,15 @@ OBS_SLICES.update({
     "mem_ball_age": slice(38, 39),     # steps since that sighting / MEM_AGE_CAP (1 = unknown)
     "mem_mate": slice(39, 41),         # last known teammate position
     "mem_mate_age": slice(41, 42),     # steps since that sighting / MEM_AGE_CAP (1 = unknown)
+    "msg_touch": slice(42, 43),        # the held message's "sender touched the ball" age (1 = no touch)
+    "budget_left": slice(43, 44),      # messages I have left, log1p(left)/log1p(BUDGET_CAP) (1 = unlimited)
+    "mate_budget_left": slice(44, 45), # teammate's budget left, inferred from the messages I received
 })
-OBS_DIM = 42
+BUDGET_KEYS = ("budget", "budget_left", "mate_budget_left")
+OBS_DIM = 45
 MEM_AGE_CAP = 40
 MAX_STEPS = 80           # short, match-clock episodes: speed (and so information) matters
+NO_TOUCH = -10**9
 
 
 def _dist(a, b):
@@ -106,6 +123,10 @@ def _norm_pos(p):
     return (2.0 * np.asarray(p, dtype=np.float32) / [FIELD_W, FIELD_H] - 1.0).astype(np.float32)
 
 
+def _budget_feature(left):
+    return min(1.0, math.log1p(max(left, 0)) / math.log1p(BUDGET_CAP))
+
+
 class RocketEnv(gym.Env):
     """
     2D multi-agent cooperative environment.
@@ -115,20 +136,31 @@ class RocketEnv(gym.Env):
         ball position/velocity, ball position relative to self, ball visible flag,
         opponent position + visible flag,
         last received message: token one-hot, the sender's ball sighting
-        (pos, vel, visible) and its age,
-        remaining communication budget fraction, remaining time fraction.
+        (pos, vel, visible), position and last-touch age, and the message's age,
+        own and teammate's remaining budget, remaining time, assist flags, memory.
 
     Under partial observability (obs_frac < 1) an object is masked to zeros
     (with its visible flag 0) when it is farther than obs_frac * field diagonal.
+
+    Assist flags only use what the agent can know: its own touches, teammate
+    touches it saw (the ball or the teammate was in view), and touches a
+    received message reported. The true touch history is never observed.
 
     Communication:
         comm_budget=None  -> unlimited
         comm_budget=0     -> no communication
         comm_budget=N     -> N messages per episode per agent
-        comm_every=k      -> messages can only be sent on steps where t % k == 0
+        comm_every=k      -> messages can only be sent on steps ceil(k/2), ceil(k/2)+k, ...
         comm_delay=d      -> a message sent at step t appears in the obs of step t+d
-    A sent (non-empty) message carries its token plus the sender's current view
-    of the ball, and is delivered to all teammates.
+    A sent (non-empty) message carries its token plus what the sender observed
+    when it decided to send (its view of the ball, its position and last
+    touch), and is delivered to all teammates. Sends that could not arrive
+    before the last decision are refused.
+
+    match=True: a team goal does not end the episode. Play restarts like a
+    kickoff (players back in their own half, the ball dropped at a random spot
+    in midfield, touches and memories cleared); the clock and the message
+    budget carry on. info["goals"] counts goals in the episode.
     """
 
     metadata = {"render_modes": ["human"]}
@@ -145,6 +177,8 @@ class RocketEnv(gym.Env):
         opponent: bool = True,
         assist_required: bool = True,
         memory: bool = True,
+        budget_obs: bool = True,
+        match: bool = False,
         render_mode: Optional[str] = None,
     ):
         super().__init__()
@@ -159,6 +193,7 @@ class RocketEnv(gym.Env):
         self.comm_budget = comm_budget
         self.comm_delay = comm_delay
         self.comm_every = comm_every
+        self.comm_phase = (comm_every + 1) // 2   # first allowed send step (1-based)
         self.max_steps = max_steps
         self.curriculum = curriculum
         self.opponent_enabled = opponent
@@ -169,6 +204,8 @@ class RocketEnv(gym.Env):
         self.goal_width = 12.0 if curriculum == "easy" else GOAL_W
         self.opp_speed = 0.0 if curriculum == "easy" else OPP_SPEED
         self.memory = memory
+        self.budget_obs = budget_obs
+        self.match = match
         self.render_mode = render_mode
 
         self._obs_size = OBS_DIM
@@ -197,7 +234,21 @@ class RocketEnv(gym.Env):
         """Whether agent i may send a non-empty message on the upcoming step."""
         if self.comm_budget is not None and self._msgs_sent[i] >= self.comm_budget:
             return False
-        return (self._step_count + 1) % self.comm_every == 0
+        upcoming = self._step_count + 1
+        # A message sent at step s is seen in the observation after step s + delay;
+        # the last decision uses the observation after step max_steps - 1.
+        if upcoming + self.comm_delay > self.max_steps - 1:
+            return False
+        return upcoming >= self.comm_phase and (upcoming - self.comm_phase) % self.comm_every == 0
+
+    def clone(self):
+        """An independent copy of the full environment state (including its RNG),
+        for counterfactual rollouts during training."""
+        new = object.__new__(type(self))
+        shared = ("observation_space", "action_space", "message_space")
+        memo = {id(self.__dict__[k]): self.__dict__[k] for k in shared if k in self.__dict__}
+        new.__dict__ = copy.deepcopy(self.__dict__, memo)
+        return new
 
     def step(self, actions: list, messages: Optional[list] = None):
         """
@@ -205,9 +256,17 @@ class RocketEnv(gym.Env):
         messages : list of int (message tokens), length n_agents, or None
         """
         allowed = [self.can_send(i) for i in range(self.n_agents)]
-        self._step_count += 1
+        # What each sender knows right now (its decision-time observation)
+        outgoing = []
+        if messages is not None:
+            for i, token in enumerate(messages):
+                if token != 0 and allowed[i]:
+                    outgoing.append((i, int(token), self._payload(i), self._step_count, self._last_touch[i]))
+        # Potentials of the state the step starts from. Computed before the clock
+        # advances, so an assist that expires during this step is charged.
         prev_potential = self._potential()
         prev_assist = self._assist_potential()
+        self._step_count += 1
 
         moves = MOVE_DELTAS[np.asarray(actions, dtype=np.int64)] * MAX_SPEED
         opp_move = self._opponent_move()
@@ -246,6 +305,7 @@ class RocketEnv(gym.Env):
         task_reward = GOAL_REWARD * scored
         if scored > 0:
             self._score_team += 1
+            self._goal_steps.append(self._step_count)
         elif scored < 0:
             self._score_opp += 1
         if not terminated and min(_dist(p, self._ball_pos) for p in self._agent_pos) < PROX_DIST:
@@ -259,9 +319,16 @@ class RocketEnv(gym.Env):
         # nets +K(1 - gamma^window) per cycle, so agents farm passes in midfield.
         shaping_reward += ASSIST_GAMMA * self._assist_potential() - prev_assist
 
+        if scored and self.match:
+            # Kickoff: play restarts; shaping was charged on the goal state above,
+            # so each goal is worth the same as in single-goal episodes.
+            self._kickoff()
+            terminated = False
+
         # --- Communication ---
-        if messages is not None:
-            self._handle_messages(messages, allowed)
+        self._observe_touches()
+        for i, token, payload, t_obs, touch in outgoing:
+            self._send(i, token, payload, t_obs, touch)
         self._deliver_messages()
         self._update_memory()
 
@@ -271,32 +338,27 @@ class RocketEnv(gym.Env):
         info["step"] = self._step_count
         info["task_reward"] = float(task_reward)
         info["shaping_reward"] = float(shaping_reward)
+        info["scored"] = int(scored)
         return obs, float(task_reward + shaping_reward), terminated, truncated, info
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _reset_state(self):
+    def _spawn_players_and_ball(self):
         rng = self.np_random
-        self._step_count = 0
-        self._score_team = 0
-        self._score_opp = 0
-
         # Agents spawn in their own half: one left, one right
         xs = [rng.uniform(2.0, FIELD_W / 2 - 1.0), rng.uniform(FIELD_W / 2 + 1.0, FIELD_W - 2.0)]
         self._agent_pos = np.array(
             [[xs[i], rng.uniform(2.0, 0.35 * FIELD_H)] for i in range(self.n_agents)],
             dtype=np.float32,
         )
-
         if self.curriculum == "easy":
             ball = [rng.uniform(5.0, FIELD_W - 5.0), rng.uniform(0.55, 0.7) * FIELD_H]
         else:
             ball = [rng.uniform(3.0, FIELD_W - 3.0), rng.uniform(0.4, 0.6) * FIELD_H]
         self._ball_pos = np.array(ball, dtype=np.float32)
         self._ball_vel = np.zeros(2, dtype=np.float32)
-
         if self.opponent_enabled:
             self._opp_pos = np.array(
                 [rng.uniform(FIELD_W / 2 - 3.0, FIELD_W / 2 + 3.0), 0.85 * FIELD_H],
@@ -305,23 +367,41 @@ class RocketEnv(gym.Env):
         else:
             self._opp_pos = np.array([-100.0, -100.0], dtype=np.float32)
 
-        # Communication state
-        self._msg_queue = []                               # (deliver_step, receiver, token, payload)
-        self._msg_token = [0] * self.n_agents              # last delivered token
-        self._msg_payload = [np.zeros(7, np.float32) for _ in range(self.n_agents)]
-        # Touch history for assists
-        self._last_touch = [-10**9] * self.n_agents     # step of each agent's last touch
-        self._last_opp_touch = -10**9
+    def _clear_play_state(self):
+        """Touches, known touches, held messages and memories (reset and kickoff)."""
+        n = self.n_agents
+        self._last_touch = [NO_TOUCH] * n            # step of each agent's last touch
+        self._last_opp_touch = NO_TOUCH
         self._last_toucher = None
-        self._msg_step = [None] * self.n_agents            # step of last delivery
-        self._msgs_sent = [0] * self.n_agents
-        self._last_send = [None] * self.n_agents           # step of each agent's last send
+        self._known_mate_touch = [NO_TOUCH] * n      # newest teammate touch each agent knows of
+        self._msg_token = [0] * n                    # last delivered token
+        self._msg_payload = [np.zeros(PAYLOAD_DIM, np.float32) for _ in range(n)]
+        self._msg_step = [None] * n                  # step of last delivery
+        self._last_send = [None] * n                 # step of each agent's last send
         # Memory (see OBS_SLICES): field position and step of the newest sighting
-        self._mem_ball = [None] * self.n_agents
-        self._mem_ball_t = [None] * self.n_agents
-        self._mem_mate = [None] * self.n_agents
-        self._mem_mate_t = [None] * self.n_agents
+        self._mem_ball = [None] * n
+        self._mem_ball_t = [None] * n
+        self._mem_mate = [None] * n
+        self._mem_mate_t = [None] * n
+
+    def _reset_state(self):
+        self._step_count = 0
+        self._score_team = 0
+        self._score_opp = 0
+        self._goal_steps = []
+        self._kickoff_step = 0                         # information from before this step is void
+        self._msg_queue = []                           # (deliver_step, receiver, token, payload, t_obs, touch)
+        self._msgs_sent = [0] * self.n_agents
+        self._msgs_received = [0] * self.n_agents
+        self._spawn_players_and_ball()
+        self._clear_play_state()
         self._update_memory()
+
+    def _kickoff(self):
+        """Match mode: restart play after a goal (clock and budgets carry on)."""
+        self._spawn_players_and_ball()
+        self._clear_play_state()
+        self._kickoff_step = self._step_count
 
     def _opponent_move(self):
         """Scripted keeper confined to y >= OPP_MIN_Y: chase the ball from above
@@ -392,9 +472,12 @@ class RocketEnv(gym.Env):
                     out=self._ball_pos,
                 )
 
+    def _live(self, touch_step, step) -> bool:
+        """A touch at touch_step still makes the teammate's goal count at `step`."""
+        return touch_step > self._last_opp_touch and step - touch_step <= ASSIST_WINDOW
+
     def _touched_recently(self, j: int) -> bool:
-        t = self._last_touch[j]
-        return t > self._last_opp_touch and self._step_count - t <= ASSIST_WINDOW
+        return self._live(self._last_touch[j], self._step_count)
 
     def _assisted(self, scorer) -> bool:
         """A goal by `scorer` counts if its teammate touched the ball recently."""
@@ -413,32 +496,47 @@ class RocketEnv(gym.Env):
             return _norm_pos(self._ball_pos), self._ball_vel / KICK_SPEED, 1.0
         return np.zeros(2, np.float32), np.zeros(2, np.float32), 0.0
 
-    def _handle_messages(self, messages: list, allowed: list):
-        """Queue outgoing messages (token + sender's ball sighting)."""
-        for i, token in enumerate(messages):
-            if token == 0 or not allowed[i]:
+    def _payload(self, i: int):
+        """What agent i can report right now."""
+        pos, vel, vis = self._ball_view(i)
+        touch_age = self._step_count - self._last_touch[i]
+        touch = min(touch_age, ASSIST_WINDOW + 1) / (ASSIST_WINDOW + 1)
+        return np.concatenate([pos, vel, [vis], _norm_pos(self._agent_pos[i]), [touch]]).astype(np.float32)
+
+    def _observe_touches(self):
+        """A teammate's touch this step is known to agents that saw the ball or the toucher."""
+        for j in range(self.n_agents):
+            if self._last_touch[j] != self._step_count:
                 continue
-            self._msgs_sent[i] += 1
-            self._last_send[i] = self._step_count
-            pos, vel, vis = self._ball_view(i)
-            payload = np.concatenate([pos, vel, [vis], _norm_pos(self._agent_pos[i])]).astype(np.float32)
-            for j in range(self.n_agents):
-                if j != i:
-                    self._msg_queue.append((self._step_count + self.comm_delay, j, int(token), payload))
+            for i in range(self.n_agents):
+                if i != j and (self._visible(i, self._ball_pos) or self._visible(i, self._agent_pos[j])):
+                    self._known_mate_touch[i] = max(self._known_mate_touch[i], self._step_count)
+
+    def _send(self, i, token, payload, t_obs, touch):
+        self._msgs_sent[i] += 1
+        self._last_send[i] = self._step_count
+        for j in range(self.n_agents):
+            if j != i:
+                self._msg_queue.append((self._step_count + self.comm_delay, j, token, payload, t_obs, touch))
 
     def _deliver_messages(self):
         pending = []
-        for deliver_step, j, token, payload in self._msg_queue:
-            if deliver_step <= self._step_count:
-                self._msg_token[j] = token
-                self._msg_payload[j] = payload
-                self._msg_step[j] = deliver_step
-                sent_t = deliver_step - self.comm_delay
-                if payload[4] > 0:   # the sender saw the ball
-                    self._remember(self._mem_ball, self._mem_ball_t, j, _denorm_pos(payload[:2]), sent_t)
-                self._remember(self._mem_mate, self._mem_mate_t, j, _denorm_pos(payload[5:7]), sent_t)
-            else:
-                pending.append((deliver_step, j, token, payload))
+        for item in self._msg_queue:
+            deliver_step, j, token, payload, t_obs, touch = item
+            if deliver_step > self._step_count:
+                pending.append(item)
+                continue
+            self._msgs_received[j] += 1
+            if t_obs < self._kickoff_step:
+                continue   # sent before a kickoff: the play it describes is over
+            self._msg_token[j] = token
+            self._msg_payload[j] = payload
+            self._msg_step[j] = deliver_step
+            if payload[PAYLOAD["ball_vis"]][0] > 0:   # the sender saw the ball
+                self._remember(self._mem_ball, self._mem_ball_t, j, _denorm_pos(payload[PAYLOAD["ball"]]), t_obs)
+            self._remember(self._mem_mate, self._mem_mate_t, j, _denorm_pos(payload[PAYLOAD["sender"]]), t_obs)
+            if touch > NO_TOUCH:
+                self._known_mate_touch[j] = max(self._known_mate_touch[j], touch)
         self._msg_queue = pending
 
     @staticmethod
@@ -470,10 +568,21 @@ class RocketEnv(gym.Env):
             return ASSIST_POTENTIAL
         return 0.0
 
+    def _budget_features(self, i):
+        """(fraction left, log-count left, teammate's inferred log-count left)."""
+        if not self.budget_obs:
+            return 0.0, 0.0, 0.0
+        if self.comm_budget is None:
+            return 1.0, 1.0, 1.0
+        left = self.comm_budget - self._msgs_sent[i]
+        mate_left = self.comm_budget - self._msgs_received[i]
+        return left / max(self.comm_budget, 1), _budget_feature(left), _budget_feature(mate_left)
+
     def _get_obs(self):
         """Return list of per-agent observations (with partial obs mask)."""
         obs_list = []
         time_left = 1.0 - self._step_count / self.max_steps
+        upcoming = self._step_count + 1
         for i in range(self.n_agents):
             o = np.zeros(OBS_DIM, dtype=np.float32)
             o[OBS_SLICES["self"]] = _norm_pos(self._agent_pos[i])
@@ -498,21 +607,22 @@ class RocketEnv(gym.Env):
             # last sighting would persist, stale but flagged visible, all episode.
             age = None if self._msg_step[i] is None else self._step_count - self._msg_step[i]
             if age is not None and age <= MSG_TTL:
+                p = self._msg_payload[i]
                 o[OBS_SLICES["msg_token"]][self._msg_token[i]] = 1.0
-                o[OBS_SLICES["msg_ball"]] = self._msg_payload[i][:4]
-                o[OBS_SLICES["msg_ball_vis"]] = self._msg_payload[i][4]
-                o[OBS_SLICES["msg_sender"]] = self._msg_payload[i][5:7]
+                o[OBS_SLICES["msg_ball"]] = np.concatenate([p[PAYLOAD["ball"]], p[PAYLOAD["ball_vel"]]])
+                o[OBS_SLICES["msg_ball_vis"]] = p[PAYLOAD["ball_vis"]]
+                o[OBS_SLICES["msg_sender"]] = p[PAYLOAD["sender"]]
+                o[OBS_SLICES["msg_touch"]] = p[PAYLOAD["touch"]]
                 o[OBS_SLICES["msg_age"]] = age / MSG_TTL
             else:
                 o[OBS_SLICES["msg_token"]][0] = 1.0
                 o[OBS_SLICES["msg_age"]] = 1.0
+                o[OBS_SLICES["msg_touch"]] = 1.0
 
-            if self.comm_budget is None:
-                o[OBS_SLICES["budget"]] = 1.0
-            else:
-                o[OBS_SLICES["budget"]] = (
-                    (self.comm_budget - self._msgs_sent[i]) / max(self.comm_budget, 1)
-                )
+            frac, left, mate_left = self._budget_features(i)
+            o[OBS_SLICES["budget"]] = frac
+            o[OBS_SLICES["budget_left"]] = left
+            o[OBS_SLICES["mate_budget_left"]] = mate_left
             o[OBS_SLICES["time"]] = time_left
             if self._last_send[i] is None:
                 o[OBS_SLICES["send_age"]] = 1.0
@@ -529,9 +639,10 @@ class RocketEnv(gym.Env):
                     o[OBS_SLICES["mem_mate"]] = _norm_pos(self._mem_mate[i])
                     o[OBS_SLICES["mem_mate_age"]] = min(self._step_count - self._mem_mate_t[i], MEM_AGE_CAP) / MEM_AGE_CAP
             if self.assist_required:
+                # Whether a goal on the coming step would count, as far as agent i knows
                 o[OBS_SLICES["assist_rule"]] = 1.0
-                o[OBS_SLICES["assist_me"]] = float(self._assisted(i))
-                o[OBS_SLICES["assist_mate"]] = float(self._touched_recently(i))
+                o[OBS_SLICES["assist_me"]] = float(self._live(self._known_mate_touch[i], upcoming))
+                o[OBS_SLICES["assist_mate"]] = float(self._live(self._last_touch[i], upcoming))
             obs_list.append(o)
         return obs_list
 
@@ -539,6 +650,8 @@ class RocketEnv(gym.Env):
         return {
             "score_team": self._score_team,
             "score_opp": self._score_opp,
+            "goals": self._score_team,
+            "goal_steps": list(self._goal_steps),
             "msgs_sent": self._msgs_sent.copy(),
             "can_send": [self.can_send(i) for i in range(self.n_agents)],
             "ball_pos": self._ball_pos.copy(),

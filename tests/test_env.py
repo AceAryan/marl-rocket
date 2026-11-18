@@ -203,7 +203,7 @@ def test_comm_period():
         _, _, _, _, info = env.step([0, 0], [1, 1])
         if allowed:
             sent_at.append(t)
-    assert sent_at == [5, 10, 15] and info["msgs_sent"] == [3, 3]
+    assert sent_at == [3, 8, 13] and info["msgs_sent"] == [3, 3]   # phase ceil(k/2), then every k
     print("ok  periodic communication")
 
 
@@ -341,17 +341,17 @@ def test_memory_from_message_uses_send_time():
     env.reset(seed=0)
     env._agent_pos[:] = [[10.0, 14.0], [2.0, 1.0]]
     _freeze_ball(env, [10.0, 16.0])
-    obs, *_ = env.step([0, 0], [1, 0])                  # sent at step 1
+    obs, *_ = env.step([0, 0], [1, 0])                  # sent at step 1, describing step 0
     assert obs[1][OBS_SLICES["mem_ball_age"]][0] == 1.0
     obs, *_ = env.step([0, 0], [0, 0])
     obs, *_ = env.step([0, 0], [0, 0])                  # delivered at step 3
     assert np.allclose(obs[1][OBS_SLICES["mem_ball"]], obs[0][OBS_SLICES["ball"]])
-    assert np.isclose(obs[1][OBS_SLICES["mem_ball_age"]][0], 2 / MEM_AGE_CAP)
+    assert np.isclose(obs[1][OBS_SLICES["mem_ball_age"]][0], 3 / MEM_AGE_CAP)
     assert np.allclose(obs[1][OBS_SLICES["mem_mate"]], [0.0, 2 * 14.0 / 30.0 - 1.0], atol=1e-5)
     for _ in range(15):                                 # outlives the message (TTL 10)
         obs, *_ = env.step([0, 0], [0, 0])
     assert obs[1][OBS_SLICES["msg_token"]][0] == 1.0
-    assert np.isclose(obs[1][OBS_SLICES["mem_ball_age"]][0], 17 / MEM_AGE_CAP)
+    assert np.isclose(obs[1][OBS_SLICES["mem_ball_age"]][0], 18 / MEM_AGE_CAP)
     print("ok  memory is updated from messages, aged from the send time")
 
 
@@ -369,6 +369,186 @@ def test_memory_prefers_newer_and_can_be_disabled():
     obs, _ = off.reset(seed=0)
     assert np.all(obs[0][OBS_SLICES["mem_ball"]] == 0) and obs[0][OBS_SLICES["mem_ball_age"]][0] == 1.0
     print("ok  memory keeps the newest sighting; memory=False blanks it")
+
+
+def test_unseen_teammate_touch_is_not_observed_without_a_message():
+    from env.rocket_env import ASSIST_WINDOW
+    for budget in (0, None):
+        env = RocketEnv(obs_frac=0.075, opponent=False, comm_budget=budget)
+        env.reset(seed=0)
+        env._agent_pos[:] = [[10.0, 14.0], [2.0, 1.0]]   # agent 1 sees neither the ball nor agent 0
+        _freeze_ball(env, [10.0, 15.2])
+        obs, *_ = env.step([1, 0], [0, 0])               # agent 0 touches, says nothing
+        assert env._last_touch[0] == 1
+        assert obs[1][OBS_SLICES["assist_me"]][0] == 0.0   # the true touch history is not leaked
+        assert obs[0][OBS_SLICES["assist_mate"]][0] == 1.0  # own touch is known
+        if budget == 0:
+            continue
+        obs, *_ = env.step([0, 0], [1, 0])               # agent 0 reports it
+        assert obs[1][OBS_SLICES["assist_me"]][0] == 1.0
+        assert obs[1][OBS_SLICES["msg_touch"]][0] == 0.0   # reported as of the decision step (touch age 0)
+    print("ok  teammate touches are known only when seen or reported")
+
+
+def test_seen_teammate_touch_is_observed():
+    env = RocketEnv(obs_frac=0.25, opponent=False, comm_budget=0)
+    env.reset(seed=0)
+    env._agent_pos[:] = [[10.0, 14.0], [10.0, 10.0]]      # agent 1 within view of the ball
+    _freeze_ball(env, [10.0, 15.2])
+    obs, *_ = env.step([1, 0])
+    assert obs[1][OBS_SLICES["assist_me"]][0] == 1.0
+    print("ok  a teammate touch in view is observed")
+
+
+def test_assist_flag_matches_the_goal_rule_on_the_next_step():
+    from env.rocket_env import ASSIST_WINDOW
+    env = RocketEnv(opponent=False)
+    env.reset(seed=0)
+    env._step_count = 50
+    env._last_touch[1] = 50 - ASSIST_WINDOW            # a goal at step 51 would no longer count
+    env._known_mate_touch[0] = 50 - ASSIST_WINDOW
+    obs = env._get_obs()
+    assert obs[0][OBS_SLICES["assist_me"]][0] == 0.0
+    env._known_mate_touch[0] = 51 - ASSIST_WINDOW
+    assert env._get_obs()[0][OBS_SLICES["assist_me"]][0] == 1.0
+    print("ok  assist flags describe the coming step")
+
+
+def test_assist_shaping_telescopes_when_an_assist_expires():
+    from env.rocket_env import ASSIST_GAMMA, ASSIST_WINDOW
+    env = RocketEnv(opponent=False)
+    env.reset(seed=0)
+    env._agent_pos[:] = [[10.0, 10.0], [10.0, 13.0]]
+    _freeze_ball(env, [10.0, 11.0])
+    total, discount = 0.0, 1.0
+    for t in range(ASSIST_WINDOW + 10):
+        acts = [1, 2] if t < 2 else [0, 0]
+        if t == 1:   # agent 1 meets the ball on its way back
+            env._agent_pos[:] = [[2.0, 2.0], [env._ball_pos[0], env._ball_pos[1] + 0.6]]
+            env._ball_vel[:] = 0.0
+        if t >= 2:   # park everyone away from the ball after the pass
+            env._agent_pos[:] = [[2.0, 2.0], [18.0, 2.0]]
+            env._ball_vel[:] = 0.0
+        phi = env._potential()
+        _, _, term, trunc, info = env.step(acts)
+        assist_part = info["shaping_reward"] - (SHAPING_GAMMA * env._potential() - phi)
+        total += discount * assist_part
+        discount *= ASSIST_GAMMA
+    assert env._last_touch[0] == 1 and env._last_touch[1] == 2
+    assert not env._assisted(1)                        # the assist has expired
+    assert abs(total) < 1e-3, total                    # created and expired: nets zero
+    print("ok  assist shaping is charged back when the assist expires")
+
+
+def test_message_carries_the_decision_time_view():
+    env = RocketEnv(obs_frac=0.075, opponent=False)
+    obs, _ = env.reset(seed=0)
+    env._agent_pos[:] = [[10.0, 13.0], [2.0, 1.0]]
+    _freeze_ball(env, [10.0, 15.0])                    # 2.0 away: in view (radius 2.7)
+    obs = env._get_obs()
+    assert obs[0][OBS_SLICES["ball_vis"]][0] == 1.0
+    obs, *_ = env.step([2, 0], [1, 0])                 # walks away (out of view) while sending
+    assert obs[0][OBS_SLICES["ball_vis"]][0] == 0.0
+    assert obs[1][OBS_SLICES["msg_ball_vis"]][0] == 1.0
+    assert np.allclose(obs[1][OBS_SLICES["msg_ball"]][:2], [0.0, 0.0], atol=1e-6)   # (10, 15) normalised
+    assert np.allclose(obs[1][OBS_SLICES["msg_sender"]], [0.0, 2 * 13.0 / 30.0 - 1.0], atol=1e-6)
+    print("ok  a message reports what the sender saw when it decided to send")
+
+
+def test_fixed_schedule_and_last_useful_send():
+    for every, delay, expected in ((40, 0, [20, 60]), (16, 0, [8, 24, 40, 56, 72]), (1, 0, list(range(1, 80))),
+                                   (1, 3, list(range(1, 77)))):
+        env = RocketEnv(comm_every=every, comm_delay=delay, opponent=False, assist_required=False)
+        _, info = env.reset(seed=0)
+        env._ball_pos[:] = [1.0, 15.0]
+        sent_at = []
+        for t in range(1, 81):
+            if info["can_send"][0]:
+                sent_at.append(t)
+            _, _, term, trunc, info = env.step([0, 0], [1, 0])
+            if term or trunc:
+                break
+        assert sent_at == expected, (every, delay, sent_at)
+    print("ok  fixed schedules are phased and never send what cannot be used")
+
+
+def test_budget_features():
+    from env.rocket_env import BUDGET_CAP
+    import math
+    env = RocketEnv(comm_budget=4, opponent=False)
+    obs, _ = env.reset(seed=0)
+    for i in range(2):
+        assert obs[i][OBS_SLICES["budget"]][0] == 1.0
+        assert np.isclose(obs[i][OBS_SLICES["budget_left"]][0], math.log1p(4) / math.log1p(BUDGET_CAP))
+    obs, *_ = env.step([0, 0], [1, 0])
+    expect = math.log1p(3) / math.log1p(BUDGET_CAP)
+    assert np.isclose(obs[0][OBS_SLICES["budget"]][0], 0.75)
+    assert np.isclose(obs[0][OBS_SLICES["budget_left"]][0], expect)
+    assert np.isclose(obs[1][OBS_SLICES["mate_budget_left"]][0], expect)   # inferred from the delivery
+    assert np.isclose(obs[0][OBS_SLICES["mate_budget_left"]][0], math.log1p(4) / math.log1p(BUDGET_CAP))
+    obs, _ = RocketEnv(comm_budget=None).reset(seed=0)
+    assert all(obs[0][OBS_SLICES[k]][0] == 1.0 for k in ("budget", "budget_left", "mate_budget_left"))
+    obs, _ = RocketEnv(comm_budget=0).reset(seed=0)
+    assert all(obs[0][OBS_SLICES[k]][0] == 0.0 for k in ("budget", "budget_left", "mate_budget_left"))
+    blind = RocketEnv(comm_budget=4, budget_obs=False)
+    obs, _ = blind.reset(seed=0)
+    obs, *_ = blind.step([0, 0], [1, 1])
+    assert all(o[OBS_SLICES[k]][0] == 0.0 for o in obs for k in ("budget", "budget_left", "mate_budget_left"))
+    print("ok  own and teammate budget are observable (and can be hidden)")
+
+
+def test_clone_replays_identically():
+    rng = np.random.default_rng(3)
+    for match in (False, True):
+        env = RocketEnv(obs_frac=0.15, comm_budget=5, opponent=False, match=match, max_steps=200)
+        env.reset(seed=1)
+        for _ in range(30):
+            env.step(rng.integers(N_ACTIONS, size=2).tolist(), [1, 0])
+        twin = env.clone()
+        if match:   # force a goal so the kickoff draws from the RNG
+            for e in (env, twin):
+                e._last_touch[1] = e._step_count
+                e._agent_pos[:] = [[2.0, 2.0], [18.0, 2.0]]
+                _freeze_ball(e, [FIELD_W / 2, FIELD_H - 1.0], [0.0, 1.0])
+                e._last_toucher = 0
+        actions = rng.integers(N_ACTIONS, size=(60, 2)).tolist()
+        for a in actions:
+            o1, r1, t1, u1, i1 = env.step(a, [1, 1])
+            o2, r2, t2, u2, i2 = twin.step(a, [1, 1])
+            assert all(np.array_equal(x, y) for x, y in zip(o1, o2)) and r1 == r2 and (t1, u1) == (t2, u2)
+            if t1 or u1:
+                break
+        if match:
+            assert env._score_team == twin._score_team == 1
+    print("ok  clone() reproduces the trajectory, RNG included")
+
+
+def test_match_mode_restarts_play_after_a_goal():
+    env = RocketEnv(obs_frac=0.15, comm_budget=5, opponent=False, match=True, max_steps=200)
+    env.reset(seed=0)
+    for _ in range(3):
+        env.step([0, 0], [1, 1])
+    sent = list(env._msgs_sent)
+    env._agent_pos[:] = [[2.0, 2.0], [18.0, 2.0]]
+    env._last_touch[1] = env._step_count
+    env._last_toucher = 0
+    _freeze_ball(env, [FIELD_W / 2, FIELD_H - 1.0], [0.0, 1.0])
+    obs, reward, term, trunc, info = env.step([0, 0], [1, 1])
+    assert not term and not trunc and info["goals"] == 1 and info["goal_steps"] == [4]
+    assert info["task_reward"] == GOAL_REWARD
+    assert env._msgs_sent == [s + 1 for s in sent]          # budget carries on (the goal-step send counts)
+    assert all(p[1] <= 0.35 * FIELD_H for p in env._agent_pos)
+    assert 0.4 * FIELD_H <= env._ball_pos[1] <= 0.6 * FIELD_H
+    assert env._last_touch == [-10**9, -10**9] and env._known_mate_touch == [-10**9, -10**9]
+    for i in range(2):   # messages describing the finished play are discarded
+        assert obs[i][OBS_SLICES["msg_token"]][0] == 1.0
+        if obs[i][OBS_SLICES["ball_vis"]][0] == 0.0:
+            assert obs[i][OBS_SLICES["mem_ball_age"]][0] == 1.0
+    while not trunc:
+        obs, reward, term, trunc, info = env.step([0, 0])
+        assert not term
+    assert info["step"] == 200
+    print("ok  match mode: a goal restarts play, the clock and budget carry on")
 
 
 if __name__ == "__main__":

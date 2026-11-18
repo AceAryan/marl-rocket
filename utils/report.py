@@ -636,26 +636,30 @@ def pilot_report(base):
         if moves and max(abs(x) for x in moves) < 2.0:
             chosen = n
             break
-    all_runs = [h for runs in groups.values() for h in runs]
-    collapse = np.mean([score(h, "final_eval_last") < 0.5 * score(h) for h in all_runs]) if all_runs else 0
+    # Stability: among runs that learned something (selected score >= 20), how many end
+    # with a last policy under half of their selected snapshot
+    learned = [h for runs in groups.values() for h in runs if score(h) >= 20]
+    collapse = np.mean([score(h, "final_eval_last") < 0.5 * score(h) for h in learned]) if learned else 0
     lines += ["## Training length and stability", "",
               f"Episodes: **{chosen}** (smallest of {cands} where the median validation curves of A, Finf and L{b} "
               f"move < 2 pp over the last 20% of training; pilot ran {pilot_n}).",
-              f"Runs whose last policy scores under half of their selected snapshot: {100 * collapse:.0f}% "
-              f"-> LR decay **{'on' if collapse > 0.10 else 'off'}** (rule: on if > 10%).", ""]
+              f"Runs (among the {len(learned)} with a selected score >= 20) whose last policy scores under half of "
+              f"their selected snapshot: {100 * collapse:.0f}% -> LR decay **{'on' if collapse > 0.10 else 'off'}** "
+              f"(rule: on if > 10%).", ""]
 
-    # Budget grid from the unlimited senders' usage
-    usage = [np.mean([h["final_eval"]["msgs_mean"] for h in groups[(mode, 0.075, 0, l)]]) / 2
-             for l in ("Rinf", "Linf") if groups.get((mode, 0.075, 0, l))]
-    top = max(2.0, float(np.median(usage))) if usage else 24.0
-    grid = sorted({int(round(x)) for x in np.geomspace(1, top, 9)} | {1, 2})
-    lines += [f"Budget grid: unlimited senders use a median of {top:.1f} messages per agent per episode -> "
-              f"finite budgets **{grid}** (roughly log-spaced from 1 to that usage).", ""]
-    decisions = {"share": share_ok, "mode": mode, "rho": rho, "credit": credit, "episodes": chosen,
-                 "lr_decay": bool(collapse > 0.10), "budgets": grid}
+    # Message usage of the unlimited senders (information only; the budget grid is fixed in config.py)
+    usage = {l: np.mean([h["final_eval"]["msgs_mean"] for h in groups[(mode, rho, 0, l)]]) / 2
+             for l in ("Rinf", "Linf", "Finf") if groups.get((mode, rho, 0, l))}
+    if usage:
+        lines += ["Messages per agent per episode used by the unlimited senders: "
+                  + ", ".join(f"{l} {u:.1f}" for l, u in usage.items()) + ".", ""]
+    decisions = {"share": bool(share_ok), "mode": mode, "rho": float(rho), "credit": credit,
+                 "episodes": int(chosen), "lr_decay": bool(collapse > 0.10)}
     lines += ["```json", json.dumps(decisions, indent=1), "```", ""]
     with open(os.path.join(base, "pilot.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
+    with open(os.path.join(base, "pilot_decisions.json"), "w") as f:
+        json.dump(decisions, f, indent=1)
     print("\n".join(lines))
     return decisions
 
@@ -664,9 +668,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dir", default="checkpoints/sweep_v5")
     parser.add_argument("--pilot", action="store_true", help="apply the pre-registered pilot rules")
+    parser.add_argument("--apply", action="store_true",
+                        help="with --pilot: write the decisions to experiments/pilot_decisions.json, "
+                             "which experiments/config.py uses for the main sweep")
     parser.add_argument("--no_references", action="store_true")
     args = parser.parse_args()
     if args.pilot:
-        pilot_report(args.dir)
+        decisions = pilot_report(args.dir)
+        if args.apply:
+            with open(C.DECISIONS_FILE, "w") as f:
+                json.dump(decisions, f, indent=1)
+            print(f"Applied: wrote {C.DECISIONS_FILE}")
     else:
         build_report(args.dir, references=not args.no_references)

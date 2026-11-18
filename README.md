@@ -34,15 +34,29 @@ python -m pytest tests -q
 # One run
 python -m experiments.train --setting L4 --obs_frac 0.075
 
-# Sweeps (resumable: re-run the same command after an interruption)
+# 1. Pilot (resumable: re-run the same command after an interruption)
 python -m experiments.run_all --sweep pilot --save_dir checkpoints/pilot_v6 --workers 20
-python -m utils.report --dir checkpoints/pilot_v6 --pilot          # applies the pilot rules
-python -m experiments.run_all --sweep tier1 --workers 20            # then tier2, tier3, tier4
+# 2. Apply the pre-registered pilot rules -> writes experiments/pilot_decisions.json
+python -m utils.report --dir checkpoints/pilot_v6 --pilot --apply
+# 3. Main sweep, tier by tier (reads the decisions), then the report
+python -m experiments.run_all --sweep tier1 --workers 20
+python -m experiments.run_all --sweep tier2 --workers 20
+python -m experiments.run_all --sweep tier3 --workers 20
+python -m experiments.run_all --sweep tier4 --workers 20
 python -m utils.report --dir checkpoints/sweep_v5                  # figures/ + results.md
 ```
 
-A run takes about 4-8 minutes (single-goal, 10k episodes) on one core; `run_all` keeps the PC awake while
-it works and rebuilds its worker pool if a worker dies.
+`--workers` defaults to the number of CPUs minus 2; `--dry_run` lists what would be trained. A run is
+resumed only if its saved configuration matches, so copying `checkpoints/pilot_v6` (or a partly finished
+`checkpoints/sweep_v5`) to another machine and re-running the same command continues where it stopped.
+The `history.json` files are in git (weights are not), so a fresh clone of this branch resumes the pilot
+too. `run_all` keeps a Windows PC awake while it works and rebuilds its worker pool if a worker dies.
+
+**Cost** (measured on a 22-thread PC with 20 workers): a single-goal run takes about 20-30 minutes when 20
+run in parallel (about 6 alone), a learned-sender run with counterfactual credit about 40 minutes, a match
+run about 25 minutes. The pilot is 72 runs (45 already done, 27 left: about 1 hour). The main sweep is
+550 runs (580 if the pilot picks rho = 0.06): roughly 6-7 hours for tier 1 (270 runs) and about 13 hours
+in all with 20 workers.
 
 ---
 
@@ -154,10 +168,18 @@ Written before the pilot was run; `python -m utils.report --dir <pilot> --pilot`
   Credit = the one with the higher median at L4 (L10).
 - **Training length**: the smallest of {10k, 15k} episodes (match: {3.5k, 5k}) at which the median validation
   curves of A, Finf and L4 move less than 2 pp over the last 20% of training.
-- **Stability**: if more than 10% of pilot runs end with a last policy under half of their selected
-  snapshot, linear learning-rate decay (5e-4 to 1e-4) is switched on.
-- **Budget grid**: about ten roughly log-spaced budgets from 1 to the unlimited senders' median usage, plus
-  unlimited.
+- **Stability**: if more than 10% of the pilot runs that learned something (selected score >= 20) end
+  with a last policy under half of their selected snapshot, linear learning-rate decay (5e-4 to 1e-4) is
+  switched on.
+- **Budget grid**: fixed in advance: 1, 2, 3, 4, 6, 8, 12, 16, 24 and unlimited for the learned and rule
+  senders; 2, 4, 8, 16, 32 and every step for the fixed schedule (match mode: x2.5).
+
+Two clarifications were made after 45 of the 72 pilot runs had finished, before any decision was taken.
+Neither depends on which setting scores better. (1) The budget grid was first to be derived from the
+unlimited senders' usage. But the paced rule sends at most once per message lifetime (about 2 messages per
+single-goal episode), so that rule would have left only budgets {1, 2, 3}, too few for the saturation
+question; the grid above is now fixed. (2) The stability rule now ignores runs that never learned (match
+mode at small rho stays near 0 goals): their "last below half of best" is noise, not a collapse.
 
 ### Main sweep (seeds 0-9; `experiments/config.py`)
 
@@ -183,7 +205,11 @@ Reference lines: a random team and a hand-coded team with and without messages.
 
 ## Pilot outcome
 
-*(filled in after the pilot)*
+*(Pending: 45 of 72 runs finished, in `checkpoints/pilot_v6`. Fill in from `checkpoints/pilot_v6/pilot.md`
+once the pilot completes.)* Seen so far, with 2-3 seeds and so not yet decisive: removing the free
+teammate-touch channel roughly doubled the room for communication at rho = 0.075 (A about 60% vs the
+every-step sender about 85%); at rho = 0.06 A learns poorly (14-26%); match mode does not learn at
+rho <= 0.075 within 5k matches.
 
 ## Results
 

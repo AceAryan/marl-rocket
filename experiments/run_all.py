@@ -127,13 +127,14 @@ def run_sweep(sweep="tier1", seeds=None, save_dir=DEFAULT_SAVE_DIR, workers=8, e
     seeds = seeds if seeds is not None else (C.PILOT_SEEDS if sweep.startswith("pilot") else C.MAIN_SEEDS)
     all_jobs = build_jobs(sweep, seeds, save_dir, episodes)
     todo = [j for j in all_jobs if not finished(j["save_dir"], j)]
-    os.makedirs(save_dir, exist_ok=True)
     log_path = os.path.join(save_dir, "sweep_log.txt")
 
     def log(msg):
         print(msg, flush=True)
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(msg + "\n")
+        if not dry_run:
+            os.makedirs(save_dir, exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(msg + "\n")
 
     log(f"Sweep '{sweep}' {time.strftime('%Y-%m-%d %H:%M')}: {len(all_jobs)} runs, "
         f"{len(all_jobs) - len(todo)} already done, {len(todo)} to train on {workers} workers")

@@ -48,3 +48,21 @@ def test_jobs_are_seed_major_and_deduplicated():
     seeds = [j["seed"] for j in jobs]
     assert seeds == sorted(seeds)                      # all of seed 100 before seed 101
     assert len({j["save_dir"] for j in jobs}) == len(jobs)
+
+
+def test_pilot_decisions_set_the_main_regime():
+    saved = {k: getattr(C, k) for k in ("PILOT_DECISIONS", "MAIN_MODE", "MAIN_RHO", "SHARE", "MSG_CREDIT",
+                                        "LR_DECAY", "EPISODES")}
+    try:
+        C.apply_decisions({"share": False, "mode": "single", "rho": 0.06, "credit": "team",
+                           "episodes": 15000, "lr_decay": True})
+        tier1 = C.sweeps()["tier1"]
+        assert all(j["obs_frac"] == 0.06 and j["n_episodes"] == 15000 and not j["share"]
+                   and j["msg_credit"] == "team" and j["lr_decay"] for j in tier1)
+        rhos = {j["obs_frac"] for j in C.sweeps()["tier3"]}
+        assert rhos == {1.0, 0.25, 0.15, 0.1, 0.075} and 0.06 not in rhos
+        assert {j["setting"] for j in tier1} >= {"A", "L1", "L24", "Linf", "R3", "Rinf", "F32", "Finf"}
+    finally:
+        for k, v in saved.items():
+            setattr(C, k, v)
+    assert {j["obs_frac"] for j in C.sweeps()["tier3"]} == {1.0, 0.25, 0.15, 0.1}   # defaults: main 0.075

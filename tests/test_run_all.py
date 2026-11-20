@@ -53,6 +53,7 @@ def test_jobs_are_seed_major_and_deduplicated():
 def test_pilot_decisions_set_the_main_regime():
     saved = {k: getattr(C, k) for k in ("PILOT_DECISIONS", "MAIN_MODE", "MAIN_RHO", "SHARE", "MSG_CREDIT",
                                         "LR_DECAY", "EPISODES")}
+    before = {j["obs_frac"] for j in C.sweeps()["tier3"]}
     try:
         C.apply_decisions({"share": False, "mode": "single", "rho": 0.06, "credit": "team",
                            "episodes": 15000, "lr_decay": True})
@@ -65,4 +66,4 @@ def test_pilot_decisions_set_the_main_regime():
     finally:
         for k, v in saved.items():
             setattr(C, k, v)
-    assert {j["obs_frac"] for j in C.sweeps()["tier3"]} == {1.0, 0.25, 0.15, 0.1}   # defaults: main 0.075
+    assert {j["obs_frac"] for j in C.sweeps()["tier3"]} == before   # restored

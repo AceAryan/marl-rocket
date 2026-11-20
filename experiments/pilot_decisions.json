@@ -1,0 +1,8 @@
+{
+ "share": false,
+ "mode": "single",
+ "rho": 0.06,
+ "credit": "rollout",
+ "episodes": 15000,
+ "lr_decay": false
+}

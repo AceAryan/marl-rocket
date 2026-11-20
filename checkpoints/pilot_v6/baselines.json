@@ -1,0 +1,19 @@
+{
+ "single|0.075": {
+  "random": {
+   "goals_mean": 0.0,
+   "goal_rate": 0.0,
+   "time_to_goal": null
+  },
+  "scripted": {
+   "goals_mean": 0.605,
+   "goal_rate": 0.605,
+   "time_to_goal": 49.99173553719008
+  },
+  "scripted_comm": {
+   "goals_mean": 0.52,
+   "goal_rate": 0.52,
+   "time_to_goal": 56.03846153846154
+  }
+ }
+}

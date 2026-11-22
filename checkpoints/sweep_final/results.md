@@ -23,7 +23,7 @@ Final greedy evaluation on 200 held-out episodes per seed. Goal rate = share of 
 | Setting | Seeds | Goal rate % (95% CI) | Δ vs A (pp) | p | Steps to goal | Msgs/agent | Goal % silenced |
 |---|---|---|---|---|---|---|---|
 | A: no communication | 5 | 90.6 ± 10.3 | - | - | 67 | 0.0 | - |
-| B: learned, unlimited | 2 | 95.0 ± 12.7 | +4.4 | 0.308 | 58 | 25.3 | 65.5 |
+| B: learned, unlimited, delay 0 | 2 | 95.0 ± 12.7 | +4.4 | 0.308 | 58 | 25.3 | 65.5 |
 
 ## RQ3: observability
 

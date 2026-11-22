@@ -30,6 +30,7 @@
 \usepackage{algpseudocode}
 \usepackage{tikz}
 \usepackage{placeins}
+\usepackage{float}   % [H]: results figures stay next to the text that discusses them
 \usepackage[numbers,sort&compress]{natbib}
 \usepackage[hidelinks]{hyperref}
 \usepackage{url}
@@ -47,8 +48,8 @@
 \newcommand{\todo}[1]{\textcolor{orange!80!black}{\emph{[#1]}}}
 
 % ------------------------------------------------------------------ title
-\renewcommand{\headeright}{CS 329 Final Report}
-\renewcommand{\undertitle}{CS 329: Foundations of AI --- Multiagent Systems \quad$\cdot$\quad Final Project Report}
+\renewcommand{\headeright}{CS 329}
+\renewcommand{\undertitle}{CS 329: Foundations of AI --- Multiagent Systems}
 \renewcommand{\shorttitle}{Communication-Constrained MARL}
 
 \title{How Many Messages Does a Team Need?\\[2pt]
@@ -387,7 +388,7 @@ every-step broadcast among regimes where both still learn: $\rho=0.06$. The main
 configurations with 10 seeds each (Table~\ref{tab:sweep}). Measured from the sweep log, the 580 runs
 took 72 hours of wall-clock time on 8--12 parallel workers, about 700 CPU core-hours.
 
-\begin{table}[!t]
+\begin{table}[H]
 \centering\small
 \caption{Pilot decisions (rules fixed in advance; 3 seeds).}
 \label{tab:pilot}
@@ -404,7 +405,7 @@ LR decay & off: 7\% of runs unstable (rule: $>$10\%) \\
 \end{tabularx}
 \end{table}
 
-\begin{table}[!t]
+\begin{table}[H]
 \centering\small
 \caption{Main sweep: 58 configurations $\times$ 10 seeds at $\rho=0.06$.}
 \label{tab:sweep}
@@ -420,6 +421,17 @@ delays $\delta\in\{1,2,4,8\}$ for \cfg{Linf}, \cfg{Rinf} & RQ2 \\
 \end{tabularx}
 \end{table}
 
+% Wide figure: defined here so that it lands at the top of the page where Experiment 1 begins.
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.74\textwidth]{figures/rq1_budget.png}
+\caption{RQ1 (Experiment 1): goal rate against the message budget (median and IQR, 10 seeds; log scale;
+dashed: \cfg{A}; dotted: hand-coded teams). Lines are the fitted saturation curves (Eq.~\ref{eq:sat});
+shaded bands mark $B_{90}$ with its 95\% CI. The rule saturates at once but low; the learned gate rises
+steadily and saturates near 22 messages; the fixed schedule keeps improving up to every step.}
+\label{fig:rq1}
+\end{figure*}
+
 % =====================================================================
 \section{Results}\label{sec:results}
 % =====================================================================
@@ -427,7 +439,13 @@ delays $\delta\in\{1,2,4,8\}$ for \cfg{Linf}, \cfg{Rinf} & RQ2 \\
 We describe four experiments: one for each research question and a fourth on what the learned sender
 learned. All results are for the main regime ($\rho=0.06$, 10 seeds per configuration) unless stated.
 
-\begin{table}[!t]
+\textbf{Learning.} All trained teams beat random play (0\%), and every communicating team beats
+\cfg{A}, which reaches only 12.8\% (Table~\ref{tab:main}). \cfg{A} is also the least stable: 6 of its 10
+seeds end training below half of their best snapshot, against none for \cfg{Linf} and \cfg{Finf}
+(Fig.~\ref{fig:curves}). A hand-coded team that searches the field scores 42.5\%; only the learned and
+fixed senders beat it.
+
+\begin{table}[H]
 \centering\small
 \caption{Goal rate (\%) on 200 unseen episodes at $\rho=0.06$: median [IQR] over 10 seeds for the best
 snapshot, median of the final policy, and messages actually sent per agent per episode.}
@@ -448,7 +466,7 @@ Hand-coded + rule msgs & 37.0 & -- & -- \\
 \end{tabular}
 \end{table}
 
-\begin{figure}[!t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{figures/learning_curves.png}
 \caption{Validation goal rate during training (median and IQR, 10 seeds). The every-step broadcast
@@ -456,25 +474,21 @@ learns fastest and highest; the silent team \cfg{A} peaks near 10\% and then deg
 \label{fig:curves}
 \end{figure}
 
-\textbf{Learning.} All trained teams beat random play (0\%), and every communicating team beats
-\cfg{A}, which reaches only 12.8\% (Table~\ref{tab:main}). \cfg{A} is also the least stable: 6 of its 10
-seeds end training below half of their best snapshot, against none for \cfg{Linf} and \cfg{Finf}
-(Fig.~\ref{fig:curves}). A hand-coded team that searches the field scores 42.5\%; only the learned and
-fixed senders beat it.
-
 \subsection{Experiment 1: the message budget (RQ1)}
 
-\begin{figure*}[!t]
-\centering
-\includegraphics[width=0.74\textwidth]{figures/rq1_budget.png}
-\caption{RQ1: goal rate against the message budget (median and IQR, 10 seeds; log scale; dashed:
-\cfg{A}; dotted: hand-coded teams). Lines are the fitted saturation curves (Eq.~\ref{eq:sat}); shaded
-bands mark $B_{90}$ with its 95\% CI. The rule saturates at once but low; the learned gate rises
-steadily and saturates near 22 messages; the fixed schedule keeps improving up to every step.}
-\label{fig:rq1}
-\end{figure*}
+The three senders give three different answers (Fig.~\ref{fig:rq1}, Table~\ref{tab:rq1}).
+\textbf{The learned gate} improves steadily with its allowance (Spearman $+0.79$) and saturates at
+$B_{90}=21.7$; from a budget of 6 on it beats \cfg{A} significantly, and from 12 on it is
+indistinguishable from unlimited. Yet even unlimited, it sends only 4.3 messages per episode, and with
+budget 16 it sends the same 4.3. In \emph{messages sent}, it saturates at about four. A larger
+allowance mostly frees the gate to send without hoarding (Experiment~4).
+\textbf{The rule} saturates immediately ($B_{90}\approx0$): one message already gives 24\%, and more
+budget adds nothing, because the rule sends only about 1.3 messages per episode however much it may.
+\textbf{The fixed schedule} never saturates before every step ($B_{90}=46.5$). It reaches the highest
+score of all, 77.5\%, but spends 50.7 messages for it, 1.3 points per message against 7.7 for the
+learned gate.
 
-\begin{table}[!t]
+\begin{table}[H]
 \centering\small
 \caption{Saturation per sender: fitted $B_{90}$ [95\% CI], smallest tested budget whose median reaches
 90\% of the gain, Spearman's $\rho_s$ of goal rate against $B$, and the gain over \cfg{A} per message
@@ -491,18 +505,6 @@ Fixed & 46.5 [41.5--53.4] & $\infty$ & $+0.74$ & 1.3 \\
 \end{tabular}
 \end{table}
 
-The three senders give three different answers (Fig.~\ref{fig:rq1}, Table~\ref{tab:rq1}).
-\textbf{The learned gate} improves steadily with its allowance (Spearman $+0.79$) and saturates at
-$B_{90}=21.7$; from a budget of 6 on it beats \cfg{A} significantly, and from 12 on it is
-indistinguishable from unlimited. Yet even unlimited, it sends only 4.3 messages per episode, and with
-budget 16 it sends the same 4.3. In \emph{messages sent}, it saturates at about four. A larger
-allowance mostly frees the gate to send without hoarding (Experiment~4).
-\textbf{The rule} saturates immediately ($B_{90}\approx0$): one message already gives 24\%, and more
-budget adds nothing, because the rule sends only about 1.3 messages per episode however much it may.
-\textbf{The fixed schedule} never saturates before every step ($B_{90}=46.5$). It reaches the highest
-score of all, 77.5\%, but spends 50.7 messages for it, 1.3 points per message against 7.7 for the
-learned gate.
-
 Why does blind broadcasting win? Learned and rule senders speak only when they see the ball, whereas
 the schedule also sends when it does not, and every message carries the sender's \emph{position}.
 Knowing where the teammate is matters for an assisted goal, and it is information the event-triggered
@@ -512,7 +514,13 @@ say, not from when they arrive.
 
 \subsection{Experiment 2: delay (RQ2)}
 
-\begin{figure}[!t]
+A one-step delay costs nothing (\cfg{Linf} 46.0\% to 46.2\%), but longer delays erode the learned
+sender steadily (Spearman $-0.61$, $p<10^{-5}$): 36.5\% at two steps, 31.2\% at four and 25.0\% at eight
+($-21.0$ points, $p=0.001$; Fig.~\ref{fig:rq2}). A ball sighting goes stale quickly, since a kick moves
+the ball about 11 units. Even at eight steps the team still scores twice as often as \cfg{A}. The rule's
+smaller gain does not change significantly with delay ($\rho_s=-0.23$, $p=0.10$).
+
+\begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{figures/rq2_delay.png}
 \caption{RQ2: goal rate against the delivery delay (median and IQR). The learned sender tolerates one
@@ -521,15 +529,15 @@ changes. Both stay above \cfg{A} (dashed).}
 \label{fig:rq2}
 \end{figure}
 
-A one-step delay costs nothing (\cfg{Linf} 46.0\% to 46.2\%), but longer delays erode the learned
-sender steadily (Spearman $-0.61$, $p<10^{-5}$): 36.5\% at two steps, 31.2\% at four and 25.0\% at eight
-($-21.0$ points, $p=0.001$; Fig.~\ref{fig:rq2}). A ball sighting goes stale quickly, since a kick moves
-the ball about 11 units. Even at eight steps the team still scores twice as often as \cfg{A}. The rule's
-smaller gain does not change significantly with delay ($\rho_s=-0.23$, $p=0.10$).
-
 \subsection{Experiment 3: observability (RQ3)}
 
-\begin{figure}[!t]
+The value of communication grows steadily as the view shrinks (Fig.~\ref{fig:rq3},
+Table~\ref{tab:rq3}). With a wide view messages are useless or slightly harmful: at $\rho=0.25$ both
+senders lose 1--2 points, small but outside the confidence interval. Below $\rho=0.15$ the gain
+rises to $+5.5$, $+18.2$ and $+33.2$ points. Regressed on $\log\rho$, the gain grows by 9.5 points per
+log-unit for \cfg{Linf} (95\% CI 7.9--12.3) and 11.2 for \cfg{Rinf} (6.6--15.7).
+
+\begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{figures/rq3_observability.png}
 \caption{RQ3: goal rate against the view radius (median and IQR). With a wide view all teams score
@@ -537,7 +545,7 @@ smaller gain does not change significantly with delay ($\rho_s=-0.23$, $p=0.10$)
 \label{fig:rq3}
 \end{figure}
 
-\begin{table}[!t]
+\begin{table}[H]
 \centering\small
 \caption{Communication gain $\Delta(\rho)$ in points, median difference to \cfg{A} with 95\% bootstrap CI.}
 \label{tab:rq3}
@@ -555,37 +563,37 @@ $\rho$ & \cfg{A} & \cfg{Linf}$-$\cfg{A} & \cfg{Rinf}$-$\cfg{A} \\
 \end{tabular}
 \end{table}
 
-The value of communication grows steadily as the view shrinks (Fig.~\ref{fig:rq3},
-Table~\ref{tab:rq3}). With a wide view messages are useless or slightly harmful: at $\rho=0.25$ both
-senders lose 1--2 points, small but outside the confidence interval. Below $\rho=0.15$ the gain
-rises to $+5.5$, $+18.2$ and $+33.2$ points. Regressed on $\log\rho$, the gain grows by 9.5 points per
-log-unit for \cfg{Linf} (95\% CI 7.9--12.3) and 11.2 for \cfg{Rinf} (6.6--15.7). Saturation depends on
-the view as well: at $\rho=0.1$ the rule's whole gain is only 3 points and its $B_{90}$ (7.9, CI
-0.1--$\infty$) cannot be pinned down. A saturation budget is only meaningful where communication
-matters at all.
+Saturation depends on the view as well: at $\rho=0.1$ the rule's whole gain is only 3 points and its
+$B_{90}$ (7.9, CI 0.1--$\infty$) cannot be pinned down. A saturation budget is only meaningful where
+communication matters at all.
 
 \subsection{Experiment 4: what the learned sender learned}
 
-\begin{figure*}[!t]
-\centering
-\includegraphics[height=1.75in]{figures/send_timing.png}\hfill
-\includegraphics[height=1.75in]{figures/budget_awareness.png}
-\caption{Left: when messages are sent (greedy policies). Learned and rule senders spend most messages
-in steps 10--30, while the team is still searching for the ball, and few after step 50.
-Right: hiding the budget from the learned gate makes it slightly \emph{better} (5--8 points, n.s.):
-a gate that sees its budget shrinking sends less.}
-\label{fig:exp4}
-\end{figure*}
-
 \textbf{Timing.} Learned senders concentrate their messages early, in steps 10--30, when the team is
-still searching and a sighting is most useful (Fig.~\ref{fig:exp4}, left); at most 6\% of their
+still searching and a sighting is most useful (Fig.~\ref{fig:timing}); at most 6\% of their
 messages fall after step 50, against 11\% for the unlimited rule.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{figures/send_timing.png}
+\caption{When messages are sent (greedy policies). Learned and rule senders spend most messages in
+steps 10--30, while the team is still searching for the ball, and few after step 50.}
+\label{fig:timing}
+\end{figure}
 
 \textbf{Budget awareness.} Each agent observes how many messages it and its teammate have left. Hiding
 these features did not hurt; it raised the goal rate by 5.5--8.2 points at budgets 2, 4 and 8
 (n.s., $p=0.30$), and blind gates sent slightly more (3.3 vs.\ 2.9 messages at budget 8;
-Fig.~\ref{fig:exp4}, right). Together with Experiment~1 this suggests that a gate which sees its
+Fig.~\ref{fig:aware}). Together with Experiment~1 this suggests that a gate which sees its
 budget shrinking learns to hoard it.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{figures/budget_awareness.png}
+\caption{Hiding the budget from the learned gate makes it slightly \emph{better} (5--8 points, n.s.):
+a gate that sees its budget shrinking sends less.}
+\label{fig:aware}
+\end{figure}
 
 \textbf{Credit and schedule.} At budget 4 the rollout and team-return credits perform alike (18.8\% vs.\
 17.5\%, $p=0.81$), so the rollout credit's advantage in the pilot did not replicate at 10 seeds.

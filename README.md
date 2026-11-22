@@ -9,7 +9,8 @@ episode ("here is where I see the ball"). We sweep the message budget, the deliv
 and find the **saturation point**: the budget beyond which extra messages stop helping.
 
 Course project for CS 329: Foundations of AI — Multiagent Systems, IIT Gandhinagar.
-The full method is in the report ([report/report.tex](report/report.tex)).
+📄 **Report:** [report/report.pdf](report/report.pdf) (LaTeX source: [report/report.tex](report/report.tex))
+· 📊 **Final results:** [checkpoints/sweep_v5/results.md](checkpoints/sweep_v5/results.md)
 
 ---
 
@@ -64,8 +65,9 @@ counterfactual rollouts, a difference reward that uses only the team reward.
 
 ## Results
 
-Main sweep: 580 runs (58 configurations × 10 seeds) at ρ = 0.06, in the regime chosen by a
-pre-registered pilot. Goal rate on 200 unseen episodes, median over seeds:
+Final results from the main sweep: 580 runs (58 configurations × 10 seeds) at ρ = 0.06, in the regime
+chosen by a pre-registered pilot. Goal rate on 200 unseen episodes, median over seeds
+([full results](checkpoints/sweep_v5/results.md)):
 
 | Team | Goals % | Messages / agent / episode |
 | :--- | :--- | :--- |
@@ -75,23 +77,37 @@ pre-registered pilot. Goal rate on 200 unseen episodes, median over seeds:
 | **Learned sender, unlimited (`Linf`)** | **46.0** | **4.3** |
 | Fixed broadcast, every step (`Finf`) | 77.5 | 50.7 |
 
-**Observations:**
-* **RQ1:** the learned sender saturates at an allowance of about 22 messages (B90 = 21.7, 95% CI
-  16.5–29.3) but only ever sends about 4 per episode. The rule saturates at one message, but low. The
-  fixed broadcast keeps improving up to every step: it also reports the sender's position, which the
-  event-triggered senders never share.
-* **RQ2:** a one-step delay is harmless; eight steps cut the learned sender's gain by two thirds, but it
-  still scores twice as often as the silent team.
-* **RQ3:** the gain from communication grows steadily as the view shrinks: about 0 points at ρ ≥ 0.15,
-  +18 at ρ = 0.075 and +33 at ρ = 0.06.
+### RQ1: how many messages?
+The learned sender saturates at an allowance of about 22 messages (B90 = 21.7, 95% CI 16.5–29.3) but
+only ever sends about 4 per episode. The rule saturates at one message, but low. The fixed broadcast keeps
+improving up to every step: it also reports the sender's position, which the event-triggered senders never
+share.
 
 ![Goal rate against the message budget](checkpoints/sweep_v5/figures/rq1_budget.png)
 
-![Goal rate against the view radius](checkpoints/sweep_v5/figures/rq3_observability.png)
+### RQ2: delay
+A one-step delay is harmless; eight steps cut the learned sender's gain by two thirds, but it still scores
+twice as often as the silent team.
 
-Full tables: [checkpoints/sweep_v5/results.md](checkpoints/sweep_v5/results.md). The 1,213 development
-runs before the main sweep, and why early versions showed no benefit from communication, are described
-in the report.
+<img src="checkpoints/sweep_v5/figures/rq2_delay.png" alt="Goal rate against the message delay" width="600">
+
+### RQ3: observability
+The gain from communication grows steadily as the view shrinks: about 0 points at ρ ≥ 0.15, +18 at
+ρ = 0.075 and +33 at ρ = 0.06.
+
+<img src="checkpoints/sweep_v5/figures/rq3_observability.png" alt="Goal rate against the view radius" width="600">
+
+### Training
+Every communicating team learns faster and higher than the silent team, which peaks near 10% and then
+degrades.
+
+<img src="checkpoints/sweep_v5/figures/learning_curves.png" alt="Validation goal rate during training" width="700">
+
+Full tables with tests and confidence intervals:
+[checkpoints/sweep_v5/results.md](checkpoints/sweep_v5/results.md). More figures (send timing, budget
+awareness) are in [checkpoints/sweep_v5/figures](checkpoints/sweep_v5/figures). The 1,213 development
+runs before the main sweep, and why early versions showed no benefit from communication, are described in
+the [report](report/report.pdf).
 
 ---
 
@@ -149,7 +165,7 @@ marl-rocket/
 │   ├── run_all.py         # parallel, resumable sweeps
 │   └── scripted.py        # random and hand-coded reference teams
 ├── utils/report.py        # statistics, figures, results.md, pilot rules
-├── report/report.tex      # project report
+├── report/                # project report (report.pdf, LaTeX source, figure script)
 ├── checkpoints/           # training histories and results (weights not committed)
 └── tests/
 ```

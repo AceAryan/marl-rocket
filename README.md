@@ -9,8 +9,8 @@ episode ("here is where I see the ball"). We sweep the message budget, the deliv
 and find the **saturation point**: the budget beyond which extra messages stop helping.
 
 Course project for CS 329: Foundations of AI — Multiagent Systems, IIT Gandhinagar.
-📄 **Report:** [report/report.pdf](report/report.pdf) (LaTeX source: [report/report.tex](report/report.tex))
-· 📊 **Final results:** [checkpoints/sweep_v5/results.md](checkpoints/sweep_v5/results.md)
+**Report:** [report/report.pdf](report/report.pdf) (LaTeX source: [report/report.tex](report/report.tex)).
+**Final results:** [checkpoints/sweep_v5/results.md](checkpoints/sweep_v5/results.md).
 
 ---
 

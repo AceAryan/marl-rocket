@@ -134,6 +134,30 @@ three senders from 580 runs with 10 seeds each, chosen by a pre-registered pilot
 six design iterations showing how easily the value of communication is hidden.
 
 % =====================================================================
+\section{Related Work}
+% =====================================================================
+
+\textbf{Learning to communicate.} CommNet~\citep{sukhbaatar2016} and RIAL/DIAL~\citep{foerster2016}
+learn message content end to end, and TarMAC~\citep{das2019} adds attention over \emph{whom} to address.
+ATOC~\citep{jiang2018} and IC3Net~\citep{singh2019} learn a gate that decides \emph{whether} to
+communicate at all. These methods are evaluated with communication available; they do not ask how much
+of it a task needs. Our learned sender is a gate of the same kind, but with a fixed message format so
+that its only decision is when to spend a limited budget.
+
+\textbf{Communication under constraints.} Zhang and Lesser~\citep{zhang2013} coordinate distributed
+learners with limited communication, SchedNet~\citep{kim2019} learns which agents may broadcast when
+only a few can send per step, and NDQ~\citep{wang2020} learns value functions that need as few messages
+as possible. These fix or penalise the bandwidth and report the performance reached. We do the
+reverse: we sweep a per-episode budget and fit the point at which performance stops improving.
+
+\textbf{Measuring communication.} Lowe et al.~\citep{lowe2019} show that agents can appear to
+communicate while messages have no causal effect on behaviour, and recommend interventions on the
+messages themselves. Our shuffled-content control is such an intervention, and our development
+history (Section~\ref{sec:history}) is a case study of the reverse problem: a silent baseline that was
+in fact communicating. Soccer is a long-standing multi-agent testbed~\citep{kurach2020}; our
+environment is deliberately small, so that about 1\,800 training runs fit on CPUs.
+
+% =====================================================================
 \section{Definitions and Notation}
 % =====================================================================
 
@@ -447,7 +471,8 @@ steadily and saturates near 22 messages; the fixed schedule keeps improving up t
 % =====================================================================
 
 We describe four experiments: one for each research question and a fourth on what the learned sender
-learned. All results are for the main regime ($\rho=0.06$, 10 seeds per configuration) unless stated.
+learned. After the first we also ask what a message is worth: what the senders actually spend, and
+whether the gain comes from content or timing. All results are for the main regime ($\rho=0.06$, 10 seeds per configuration) unless stated.
 
 \textbf{Learning.} All trained teams beat random play (0\%), and every communicating team beats
 \cfg{A}, which reaches only 12.8\% (Table~\ref{tab:main}). \cfg{A} is also the least stable: 6 of its 10
@@ -515,12 +540,52 @@ Fixed & 46.5 [41.5--53.4] & $\infty$ & $+0.74$ & 1.3 \\
 \end{tabular}
 \end{table}
 
-Why does blind broadcasting win? Learned and rule senders speak only when they see the ball, whereas
-the schedule also sends when it does not, and every message carries the sender's \emph{position}.
-Knowing where the teammate is matters for an assisted goal, and it is information the event-triggered
-senders never share. Shuffling message content between episodes, with send times unchanged, removes
-61.5 of \cfg{Finf}'s 64.8-point gain and 28.0 of \cfg{Linf}'s 33.2: the gain comes from what messages
-say, not from when they arrive.
+\subsection{What a message is worth}
+
+A budget is an allowance; what a team pays is the messages it actually sends.
+Fig.~\ref{fig:efficiency} places every configuration of the budget sweep by that cost. The learned
+senders trace a steep curve: between about 2 and 4.3 messages per episode their goal rate rises from
+19\% to 46\%, past the hand-coded team. The rule senders all collapse into one cluster at 1--1.4
+messages and 16--32\%, whatever their budget. The fixed schedule is no better than silence below
+8 messages (\cfg{F4}: 7.5\%), needs about 12 to overtake the learned gate (\cfg{F16}: 58\%), and 51 to
+reach its best score.
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=\linewidth]{figures/efficiency.pdf}
+\caption{Goal rate against the messages actually sent (median and IQR, one point per configuration of
+the budget sweep). Learned senders gain most per message; rule senders cluster at about one message
+whatever their budget; the fixed schedule pays off only above about 10 messages.}
+\label{fig:efficiency}
+\end{figure}
+
+Why, then, does blind broadcasting win at large budgets? Learned and rule senders speak only when they
+see the ball, whereas the schedule also sends when it does not, and every message carries the sender's
+\emph{position}. Knowing where the teammate is matters for an assisted goal, and it is information the
+event-triggered senders never share. To separate content from timing we re-evaluate each trained team
+with messages delivered at the same steps but carrying the content of another episode
+(Table~\ref{tab:shuffle}). Every team falls to 8--19\%, close to the silent team's 12.8\%, and a few fall
+below it: send times alone carry almost nothing, and the receivers act on what messages say.
+
+\begin{table}[!htb]
+\centering\small
+\caption{Content or timing? Goal rate (\%, median over 10 seeds) with real messages and with the
+content shuffled between episodes (same send times). \cfg{A} scores 12.8\%.}
+\label{tab:shuffle}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Team & Msgs & Real & Shuffled & Gain lost \\
+\midrule
+\cfg{L4} & 1.8 & 18.8 & 8.5 & 10.2 \\
+\cfg{L16} & 4.3 & 44.5 & 18.8 & 25.8 \\
+\cfg{Linf} & 4.3 & 46.0 & 18.0 & 28.0 \\
+\cfg{R4} & 1.3 & 32.0 & 14.8 & 17.2 \\
+\cfg{Rinf} & 1.3 & 22.2 & 10.5 & 11.8 \\
+\cfg{F16} & 11.6 & 58.0 & 12.5 & 45.5 \\
+\cfg{Finf} & 50.7 & 77.5 & 16.0 & 61.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Experiment 2: delay (RQ2)}
 
@@ -645,6 +710,19 @@ report its own position without seeing the ball, centralised training such as QM
 agents.
 
 % =====================================================================
+\section{Conclusion}
+% =====================================================================
+
+How many messages do cooperative agents need? In our task, a learned sender needs about four per
+episode: its benefit saturates at an allowance of about 22, of which it uses four, early, while the
+team is still searching. That number is not a property of the task alone. It depends on how little the
+agents see, since communication is worthless with a wide view and decisive with a narrow one; on what a
+message may carry, since a schedule that also reports position keeps improving up to every step; and,
+to a lesser degree, on delay, which erodes the gain without removing it. Measuring it at all required a task in which
+a teammate's information is needed, a channel that is the only route for it, and a credit that can
+penalise a wasted message, each of which our early versions lacked.
+
+% =====================================================================
 \section*{Contributions}
 % =====================================================================
 
@@ -680,6 +758,19 @@ with backpropagation. In \emph{NeurIPS}, 2016.
 communicate with deep multi-agent reinforcement learning. In \emph{NeurIPS}, 2016.
 \bibitem{singh2019} A.~Singh, T.~Jain, and S.~Sukhbaatar. Learning when to communicate at scale in
 multiagent cooperative and competitive tasks. In \emph{ICLR}, 2019.
+\bibitem{das2019} A.~Das, T.~Gervet, J.~Romoff, D.~Batra, D.~Parikh, M.~Rabbat, and J.~Pineau.
+TarMAC: Targeted multi-agent communication. In \emph{ICML}, 2019.
+\bibitem{jiang2018} J.~Jiang and Z.~Lu. Learning attentional communication for multi-agent
+cooperation. In \emph{NeurIPS}, 2018.
+\bibitem{kim2019} D.~Kim, S.~Moon, D.~Hostallero, W.~J.~Kang, T.~Lee, K.~Son, and Y.~Yi. Learning to
+schedule communication in multi-agent reinforcement learning. In \emph{ICLR}, 2019.
+\bibitem{wang2020} T.~Wang, J.~Wang, C.~Zheng, and C.~Zhang. Learning nearly decomposable value
+functions via communication minimization. In \emph{ICLR}, 2020.
+\bibitem{lowe2019} R.~Lowe, J.~Foerster, Y.-L.~Boureau, J.~Pineau, and Y.~Dauphin. On the pitfalls of
+measuring emergent communication. In \emph{AAMAS}, 2019.
+\bibitem{kurach2020} K.~Kurach, A.~Raichuk, P.~Sta\'nczyk, M.~Zaj\k{a}c, O.~Bachem, L.~Espeholt,
+C.~Riquelme, D.~Vincent, M.~Michalski, O.~Bousquet, and S.~Gelly. Google Research Football: A novel
+reinforcement learning environment. In \emph{AAAI}, 2020.
 \bibitem{oliehoek2016} F.~A.~Oliehoek and C.~Amato. \emph{A Concise Introduction to Decentralized
 POMDPs}. Springer, 2016.
 \bibitem{watkins1992} C.~J.~C.~H.~Watkins and P.~Dayan. Q-learning. \emph{Machine Learning},

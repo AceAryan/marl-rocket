@@ -1,4 +1,4 @@
-"""Figures 2 and 3 of the report: the v3 and v4 development sweeps, drawn for print
+"""Figures of the report drawn for print: the v3 and v4 development sweeps and the efficiency plot
 (vector PDF, Times, 8 pt). The main-sweep figures are written by utils/report.py.
 
 Usage (from the repository root):
@@ -51,6 +51,44 @@ def save(fig, name):
     fig.savefig(path)
     plt.close(fig)
     print("wrote", os.path.relpath(path, ROOT))
+
+
+# ------------------------------------------------------------------ main sweep (from its summary)
+
+def fig_efficiency():
+    """Goal rate against the messages actually sent, one point per main-sweep configuration."""
+    import csv
+    import re
+    base = os.path.join(ROOT, "checkpoints", "sweep_v5")
+    rows = [r for r in csv.DictReader(open(os.path.join(base, "summary.csv")))
+            if r["obs_frac"] == "0.06" and r["delay"] == "0"]
+    a = next(float(r["goals_median"]) for r in rows if r["label"] == "A-indep")
+    scripted = 100 * json.load(open(os.path.join(base, "baselines.json")))["single|0.06"]["scripted"]["goals_mean"]
+    fig, ax = plt.subplots(figsize=(3.3, 2.15))
+    ax.axhline(a, color=GRAY, ls="--", lw=0.9, label="No messages (A)")
+    ax.axhline(scripted, color="#9b9a95", ls=":", lw=0.9, label="Hand-coded team")
+    for kind, (prefix, color, marker, label) in KIND.items():
+        pts = sorted((float(r["msgs_per_agent"]), float(r["goals_median"]), float(r["goals_q25"]),
+                      float(r["goals_q75"]), r["label"][:-6]) for r in rows
+                     if re.fullmatch(rf"{prefix}(\d+|inf)-indep", r["label"]))
+        ax.errorbar([p[0] for p in pts], [p[1] for p in pts],
+                    yerr=[[p[1] - p[2] for p in pts], [p[3] - p[1] for p in pts]], color=color, marker=marker,
+                    ms=3.5, lw=0, elinewidth=0.6, capsize=1.5, markeredgecolor="white", markeredgewidth=0.4,
+                    label=label.replace("Rule: send on sight", "Rule"))
+        for x, y, _, _, name in pts:
+            if name.endswith("inf") and kind != "rule":
+                ax.annotate(f"{name}", (x, y), xytext={"learned": (5, 2), "rule": (8, -14), "fixed": (-8, 6)}[kind],
+                            textcoords="offset points", fontsize=7, color=color, family="monospace")
+    ax.set_xscale("log")
+    ax.set_xticks([0.5, 1, 2, 4, 8, 16, 32], ["0.5", "1", "2", "4", "8", "16", "32"])
+    ax.minorticks_off()
+    ax.set_xlim(0.45, 70)
+    ax.set_ylim(0, 85)
+    ax.set_xlabel("Messages actually sent per agent per episode (log scale)")
+    ax.set_ylabel("Goal rate (%)")
+    ax.legend(loc="upper left", ncol=2, columnspacing=1.0)
+    grid(ax)
+    save(fig, "efficiency.pdf")
 
 
 # ------------------------------------------------------------------ development runs
@@ -130,5 +168,6 @@ def fig_v4():
 
 
 if __name__ == "__main__":
+    fig_efficiency()
     fig_v3()
     fig_v4()

@@ -100,12 +100,11 @@ flawed credit signal had masked the value of communication.
 \end{abstract}
 \keywords{multi-agent reinforcement learning \and communication budgets \and partial observability
 \and independent Q-learning \and difference rewards}
-\vspace{0.2in}
-}]
-
-% =====================================================================
+\vspace{0.1in}
+% The Introduction heading spans both columns, so that both columns start below it.
 \section{Introduction}
-% =====================================================================
+\vspace{0.04in}
+}]
 
 Vehicle platoons, warehouse robots and sensor networks all coordinate under limits on how much they
 can tell each other~\citep{weiss2000,zhang2013}. Bandwidth is shared, messages arrive late and every
@@ -133,12 +132,13 @@ difference reward that prices each message against the budget it uses up; (3) sa
 three senders from 580 runs with 10 seeds each, chosen by a pre-registered pilot; and (4) a record of
 six design iterations showing how easily the value of communication is hidden.
 
+\clearpage
 % =====================================================================
 \section{Related Work}
 % =====================================================================
 
-\textbf{Learning to communicate.} CommNet~\citep{sukhbaatar2016} and RIAL/DIAL~\citep{foerster2016}
-learn message content end to end, and TarMAC~\citep{das2019} adds attention over \emph{whom} to address.
+\textbf{Learning to communicate.} Early methods such as CommNet~\citep{sukhbaatar2016} and
+RIAL/DIAL~\citep{foerster2016} learn message content end to end, and TarMAC~\citep{das2019} adds attention over \emph{whom} to address.
 ATOC~\citep{jiang2018} and IC3Net~\citep{singh2019} learn a gate that decides \emph{whether} to
 communicate at all. These methods are evaluated with communication available; they do not ask how much
 of it a task needs. Our learned sender is a gate of the same kind, but with a fixed message format so

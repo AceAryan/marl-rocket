@@ -1,0 +1,570 @@
+Sweep 'all': 510 runs, 0 already done, 510 to train on 20 workers
+[1/510 | 10 min] done    A obs=0.15 d=0 seed=0 | R=  95.7 goal=0.94 concede=0.00 | 577s
+[2/510 | 10 min] done    A obs=0.15 d=0 seed=5 | R=  92.5 goal=0.91 concede=0.00 | 620s
+[3/510 | 11 min] done    A obs=0.15 d=0 seed=4 | R=  76.5 goal=0.74 concede=0.00 | 656s
+[4/510 | 11 min] done    A obs=0.15 d=0 seed=2 | R=  82.8 goal=0.81 concede=0.00 | 656s
+[5/510 | 11 min] done    A obs=0.15 d=0 seed=9 | R=  93.1 goal=0.92 concede=0.00 | 662s
+[6/510 | 11 min] done    A obs=0.15 d=0 seed=6 | R=  94.9 goal=0.94 concede=0.00 | 668s
+[7/510 | 12 min] done    A obs=0.15 d=0 seed=8 | R=  60.0 goal=0.57 concede=0.00 | 700s
+[8/510 | 12 min] done    A obs=0.15 d=0 seed=3 | R=  82.6 goal=0.81 concede=0.00 | 713s
+[9/510 | 12 min] done    A obs=0.15 d=0 seed=1 | R=  91.9 goal=0.91 concede=0.00 | 731s
+[10/510 | 13 min] done    A obs=0.15 d=0 seed=7 | R=  77.8 goal=0.75 concede=0.00 | 778s
+[11/510 | 15 min] done   D2 obs=0.15 d=0 seed=5 | R=  73.7 goal=0.72 concede=0.00 | 890s
+[12/510 | 15 min] done   D2 obs=0.15 d=0 seed=6 | R=  86.7 goal=0.85 concede=0.00 | 904s
+[13/510 | 15 min] done   D2 obs=0.15 d=0 seed=0 | R=  81.5 goal=0.80 concede=0.00 | 908s
+[14/510 | 16 min] done   D2 obs=0.15 d=0 seed=1 | R=  60.5 goal=0.58 concede=0.00 | 963s
+[15/510 | 16 min] done   D2 obs=0.15 d=0 seed=7 | R=  51.3 goal=0.48 concede=0.00 | 970s
+[16/510 | 16 min] done   D2 obs=0.15 d=0 seed=2 | R=  79.9 goal=0.78 concede=0.00 | 984s
+[17/510 | 18 min] done   D2 obs=0.15 d=0 seed=9 | R=  84.5 goal=0.82 concede=0.00 | 1059s
+[18/510 | 18 min] done   D2 obs=0.15 d=0 seed=8 | R=  66.3 goal=0.64 concede=0.00 | 1088s
+[19/510 | 19 min] done   D2 obs=0.15 d=0 seed=4 | R=  58.6 goal=0.56 concede=0.00 | 1110s
+[20/510 | 19 min] done   D2 obs=0.15 d=0 seed=3 | R=  52.2 goal=0.49 concede=0.00 | 1118s
+[21/510 | 26 min] done   D5 obs=0.15 d=0 seed=1 | R=  77.4 goal=0.76 concede=0.00 | 910s
+[22/510 | 26 min] done   D5 obs=0.15 d=0 seed=0 | R=  52.4 goal=0.50 concede=0.00 | 991s
+[23/510 | 27 min] done   D5 obs=0.15 d=0 seed=6 | R=  93.0 goal=0.91 concede=0.00 | 933s
+[24/510 | 28 min] done   D5 obs=0.15 d=0 seed=2 | R=  42.3 goal=0.41 concede=0.01 | 1013s
+[25/510 | 29 min] done   D5 obs=0.15 d=0 seed=5 | R=  80.7 goal=0.80 concede=0.00 | 1057s
+[26/510 | 29 min] done   D5 obs=0.15 d=0 seed=3 | R=  44.7 goal=0.41 concede=0.00 | 1073s
+[27/510 | 29 min] done   D5 obs=0.15 d=0 seed=4 | R=  79.6 goal=0.78 concede=0.00 | 1079s
+[28/510 | 31 min] done   D5 obs=0.15 d=0 seed=9 | R=  75.3 goal=0.73 concede=0.00 | 1067s
+[29/510 | 31 min] done   D5 obs=0.15 d=0 seed=7 | R=  51.9 goal=0.49 concede=0.00 | 1145s
+[30/510 | 31 min] done   D5 obs=0.15 d=0 seed=8 | R=  72.3 goal=0.70 concede=0.00 | 1131s
+[31/510 | 32 min] done  D10 obs=0.15 d=0 seed=1 | R=  61.4 goal=0.59 concede=0.00 | 996s
+[32/510 | 32 min] done  D10 obs=0.15 d=0 seed=0 | R=  43.5 goal=0.41 concede=0.00 | 1012s
+[33/510 | 33 min] done  D10 obs=0.15 d=0 seed=2 | R=  51.3 goal=0.49 concede=0.00 | 1046s
+[34/510 | 33 min] done  D10 obs=0.15 d=0 seed=4 | R=  43.9 goal=0.42 concede=0.00 | 1018s
+[35/510 | 34 min] done  D10 obs=0.15 d=0 seed=3 | R=  60.6 goal=0.58 concede=0.00 | 1073s
+[36/510 | 36 min] done  D10 obs=0.15 d=0 seed=6 | R=  86.0 goal=0.84 concede=0.00 | 1079s
+[37/510 | 36 min] done  D10 obs=0.15 d=0 seed=5 | R=  53.6 goal=0.51 concede=0.00 | 1180s
+[38/510 | 37 min] done  D10 obs=0.15 d=0 seed=9 | R=  84.0 goal=0.82 concede=0.00 | 1110s
+[39/510 | 38 min] done  D10 obs=0.15 d=0 seed=8 | R=  62.3 goal=0.60 concede=0.00 | 1163s
+[40/510 | 38 min] done  D10 obs=0.15 d=0 seed=7 | R=  56.0 goal=0.54 concede=0.00 | 1196s
+[41/510 | 41 min] done    D obs=0.15 d=0 seed=0 | R=  87.3 goal=0.86 concede=0.00 | 959s
+[42/510 | 44 min] done    D obs=0.15 d=0 seed=2 | R=  87.9 goal=0.86 concede=0.00 | 990s
+[43/510 | 44 min] done    D obs=0.15 d=0 seed=1 | R=  59.8 goal=0.58 concede=0.00 | 1081s
+[44/510 | 46 min] done    D obs=0.15 d=0 seed=3 | R=  56.2 goal=0.54 concede=0.00 | 1078s
+[45/510 | 47 min] done    D obs=0.15 d=0 seed=4 | R=  77.7 goal=0.76 concede=0.00 | 1122s
+[46/510 | 48 min] done    D obs=0.15 d=0 seed=6 | R=  72.4 goal=0.70 concede=0.00 | 1127s
+[47/510 | 48 min] done    D obs=0.15 d=0 seed=5 | R=  21.1 goal=0.18 concede=0.00 | 1161s
+[48/510 | 48 min] done    D obs=0.15 d=0 seed=7 | R=  88.1 goal=0.86 concede=0.00 | 1050s
+[49/510 | 49 min] done    D obs=0.15 d=0 seed=9 | R=  81.9 goal=0.80 concede=0.00 | 1065s
+[50/510 | 49 min] done    C obs=0.15 d=0 seed=2 | R=  83.8 goal=0.82 concede=0.00 | 981s
+[51/510 | 49 min] done    D obs=0.15 d=0 seed=8 | R=  88.1 goal=0.86 concede=0.00 | 1090s
+[52/510 | 50 min] done    C obs=0.15 d=0 seed=1 | R=  44.1 goal=0.41 concede=0.00 | 1092s
+[53/510 | 50 min] done    C obs=0.15 d=0 seed=0 | R=  22.3 goal=0.20 concede=0.01 | 1111s
+[54/510 | 52 min] done    C obs=0.15 d=0 seed=3 | R=  12.2 goal=0.10 concede=0.00 | 1122s
+[55/510 | 52 min] done    C obs=0.15 d=0 seed=4 | R=  19.2 goal=0.17 concede=0.00 | 1106s
+[56/510 | 53 min] done    C obs=0.15 d=0 seed=5 | R=  86.7 goal=0.84 concede=0.00 | 1064s
+[57/510 | 56 min] done    C obs=0.15 d=0 seed=7 | R=  82.4 goal=0.81 concede=0.00 | 1111s
+[58/510 | 56 min] done    C obs=0.15 d=0 seed=8 | R=  90.9 goal=0.89 concede=0.00 | 1066s
+[59/510 | 56 min] done    C obs=0.15 d=0 seed=9 | R=  95.6 goal=0.94 concede=0.00 | 1068s
+[60/510 | 57 min] done    C obs=0.15 d=0 seed=6 | R=  15.5 goal=0.13 concede=0.00 | 1234s
+[61/510 | 58 min] done    B obs=0.15 d=0 seed=0 | R=  96.0 goal=0.94 concede=0.00 | 963s
+[62/510 | 61 min] done    B obs=0.15 d=0 seed=1 | R=  65.2 goal=0.63 concede=0.00 | 1053s
+[63/510 | 61 min] done    A obs=0.1 d=0 seed=1 | R=  50.3 goal=0.47 concede=0.00 | 694s
+[64/510 | 61 min] done    A obs=0.1 d=0 seed=0 | R=  72.1 goal=0.70 concede=0.00 | 740s
+[65/510 | 62 min] done    B obs=0.15 d=0 seed=3 | R=  78.2 goal=0.77 concede=0.00 | 952s
+[66/510 | 62 min] done    A obs=0.1 d=0 seed=2 | R=  66.9 goal=0.64 concede=0.00 | 692s
+[67/510 | 63 min] done    B obs=0.15 d=0 seed=2 | R=  48.5 goal=0.46 concede=0.00 | 1118s
+[68/510 | 64 min] done    A obs=0.1 d=0 seed=3 | R=  54.7 goal=0.52 concede=0.00 | 716s
+[69/510 | 64 min] done    A obs=0.1 d=0 seed=4 | R=  65.2 goal=0.63 concede=0.01 | 710s
+[70/510 | 65 min] done    B obs=0.15 d=0 seed=6 | R=  76.5 goal=0.74 concede=0.00 | 1009s
+[71/510 | 65 min] done    B obs=0.15 d=0 seed=5 | R=  97.2 goal=0.95 concede=0.00 | 1049s
+[72/510 | 66 min] done    B obs=0.15 d=0 seed=4 | R=  80.9 goal=0.79 concede=0.00 | 1142s
+[73/510 | 67 min] done    A obs=0.1 d=0 seed=5 | R=  41.2 goal=0.38 concede=0.00 | 817s
+[74/510 | 67 min] done    B obs=0.15 d=0 seed=9 | R=  57.9 goal=0.56 concede=0.00 | 1107s
+[75/510 | 68 min] done    B obs=0.15 d=0 seed=7 | R=  74.8 goal=0.72 concede=0.00 | 1182s
+[76/510 | 68 min] done    A obs=0.1 d=0 seed=7 | R=  75.1 goal=0.72 concede=0.00 | 741s
+[77/510 | 68 min] done    B obs=0.15 d=0 seed=8 | R=  77.4 goal=0.76 concede=0.00 | 1163s
+[78/510 | 68 min] done    A obs=0.1 d=0 seed=8 | R=  81.6 goal=0.79 concede=0.00 | 744s
+[79/510 | 68 min] done    A obs=0.1 d=0 seed=6 | R=  78.7 goal=0.76 concede=0.00 | 766s
+[80/510 | 69 min] done    A obs=0.1 d=0 seed=9 | R=  80.2 goal=0.78 concede=0.00 | 712s
+[81/510 | 73 min] done   D2 obs=0.1 d=0 seed=0 | R=  73.9 goal=0.72 concede=0.00 | 945s
+[82/510 | 78 min] done   D2 obs=0.1 d=0 seed=1 | R=  51.1 goal=0.48 concede=0.00 | 989s
+[83/510 | 78 min] done   D2 obs=0.1 d=0 seed=2 | R=  46.7 goal=0.44 concede=0.00 | 999s
+[84/510 | 78 min] done   D2 obs=0.1 d=0 seed=4 | R=  65.2 goal=0.62 concede=0.00 | 1004s
+[85/510 | 79 min] done   D2 obs=0.1 d=0 seed=5 | R=  33.8 goal=0.30 concede=0.00 | 1017s
+[86/510 | 80 min] done   D2 obs=0.1 d=0 seed=6 | R=  46.1 goal=0.43 concede=0.01 | 1007s
+[87/510 | 80 min] done   D2 obs=0.1 d=0 seed=3 | R=  46.8 goal=0.43 concede=0.00 | 1124s
+[88/510 | 81 min] done   D2 obs=0.1 d=0 seed=7 | R=  54.1 goal=0.51 concede=0.00 | 1017s
+[89/510 | 81 min] done   D2 obs=0.1 d=0 seed=8 | R=  45.3 goal=0.42 concede=0.00 | 1010s
+[90/510 | 82 min] done   D2 obs=0.1 d=0 seed=9 | R=  42.7 goal=0.40 concede=0.00 | 1007s
+[91/510 | 84 min] done   D5 obs=0.1 d=0 seed=3 | R=  62.6 goal=0.60 concede=0.00 | 989s
+[92/510 | 84 min] done   D5 obs=0.1 d=0 seed=0 | R=  51.6 goal=0.48 concede=0.00 | 1140s
+[93/510 | 85 min] done   D5 obs=0.1 d=0 seed=2 | R=  71.8 goal=0.69 concede=0.00 | 1083s
+[94/510 | 85 min] done   D5 obs=0.1 d=0 seed=1 | R=  60.2 goal=0.58 concede=0.00 | 1118s
+[95/510 | 86 min] done   D5 obs=0.1 d=0 seed=4 | R=  65.1 goal=0.63 concede=0.00 | 1092s
+[96/510 | 86 min] done   D5 obs=0.1 d=0 seed=8 | R=  56.0 goal=0.54 concede=0.00 | 1079s
+[97/510 | 87 min] done   D5 obs=0.1 d=0 seed=5 | R=  64.4 goal=0.62 concede=0.00 | 1111s
+[98/510 | 87 min] done   D5 obs=0.1 d=0 seed=6 | R=  71.1 goal=0.69 concede=0.00 | 1112s
+[99/510 | 87 min] done   D5 obs=0.1 d=0 seed=7 | R=  56.4 goal=0.54 concede=0.00 | 1140s
+[100/510 | 88 min] done   D5 obs=0.1 d=0 seed=9 | R=  42.8 goal=0.40 concede=0.01 | 1148s
+[101/510 | 92 min] done  D10 obs=0.1 d=0 seed=0 | R=  47.7 goal=0.45 concede=0.00 | 1106s
+[102/510 | 95 min] done  D10 obs=0.1 d=0 seed=2 | R=  65.2 goal=0.63 concede=0.00 | 1010s
+[103/510 | 95 min] done  D10 obs=0.1 d=0 seed=4 | R=  68.6 goal=0.66 concede=0.00 | 1004s
+[104/510 | 95 min] done  D10 obs=0.1 d=0 seed=1 | R=  64.6 goal=0.62 concede=0.00 | 1061s
+[105/510 | 96 min] done  D10 obs=0.1 d=0 seed=5 | R=  76.9 goal=0.74 concede=0.00 | 971s
+[106/510 | 96 min] done  D10 obs=0.1 d=0 seed=3 | R=  61.0 goal=0.58 concede=0.00 | 1052s
+[107/510 | 97 min] done  D10 obs=0.1 d=0 seed=7 | R=  68.2 goal=0.66 concede=0.00 | 974s
+[108/510 | 98 min] done  D10 obs=0.1 d=0 seed=9 | R=  75.5 goal=0.73 concede=0.00 | 974s
+[109/510 | 98 min] done  D10 obs=0.1 d=0 seed=8 | R=  58.2 goal=0.56 concede=0.00 | 1030s
+[110/510 | 98 min] done  D10 obs=0.1 d=0 seed=6 | R=  70.8 goal=0.69 concede=0.00 | 1097s
+[111/510 | 101 min] done    D obs=0.1 d=0 seed=0 | R=  49.3 goal=0.47 concede=0.00 | 1053s
+[112/510 | 102 min] done    D obs=0.1 d=0 seed=2 | R=  87.3 goal=0.85 concede=0.00 | 1023s
+[113/510 | 103 min] done    D obs=0.1 d=0 seed=1 | R=  58.5 goal=0.56 concede=0.00 | 1113s
+[114/510 | 103 min] done    D obs=0.1 d=0 seed=4 | R=  72.0 goal=0.70 concede=0.00 | 1033s
+[115/510 | 104 min] done    D obs=0.1 d=0 seed=6 | R=  86.8 goal=0.85 concede=0.00 | 1025s
+[116/510 | 104 min] done    D obs=0.1 d=0 seed=7 | R=  84.6 goal=0.82 concede=0.00 | 1017s
+[117/510 | 104 min] done    D obs=0.1 d=0 seed=3 | R=  55.5 goal=0.53 concede=0.00 | 1140s
+[118/510 | 105 min] done    D obs=0.1 d=0 seed=9 | R=  78.8 goal=0.77 concede=0.00 | 1062s
+[119/510 | 106 min] done    D obs=0.1 d=0 seed=5 | R=  40.3 goal=0.38 concede=0.00 | 1179s
+[120/510 | 107 min] done    D obs=0.1 d=0 seed=8 | R=  57.7 goal=0.55 concede=0.00 | 1155s
+[121/510 | 110 min] done    C obs=0.1 d=0 seed=0 | R=  22.2 goal=0.19 concede=0.00 | 1067s
+[122/510 | 111 min] done    C obs=0.1 d=0 seed=3 | R=  74.1 goal=0.71 concede=0.00 | 940s
+[123/510 | 112 min] done    C obs=0.1 d=0 seed=1 | R=  41.8 goal=0.39 concede=0.00 | 1012s
+[124/510 | 112 min] done    C obs=0.1 d=0 seed=4 | R=  38.5 goal=0.36 concede=0.00 | 982s
+[125/510 | 113 min] done    C obs=0.1 d=0 seed=2 | R=   3.2 goal=0.01 concede=0.01 | 1058s
+[126/510 | 113 min] done    C obs=0.1 d=0 seed=5 | R=  10.2 goal=0.08 concede=0.00 | 1043s
+[127/510 | 114 min] done    C obs=0.1 d=0 seed=6 | R=  43.0 goal=0.41 concede=0.00 | 1006s
+[128/510 | 114 min] done    C obs=0.1 d=0 seed=7 | R=  42.7 goal=0.40 concede=0.00 | 971s
+[129/510 | 115 min] done    C obs=0.1 d=0 seed=8 | R=  52.4 goal=0.49 concede=0.00 | 1001s
+[130/510 | 117 min] done    B obs=0.1 d=0 seed=0 | R=  91.5 goal=0.90 concede=0.00 | 926s
+[131/510 | 117 min] done    C obs=0.1 d=0 seed=9 | R=  45.8 goal=0.43 concede=0.00 | 1117s
+[132/510 | 120 min] done    B obs=0.1 d=0 seed=1 | R=  64.1 goal=0.61 concede=0.00 | 1070s
+[133/510 | 121 min] done    B obs=0.1 d=0 seed=2 | R=  82.7 goal=0.81 concede=0.00 | 1070s
+[134/510 | 121 min] done    B obs=0.1 d=0 seed=3 | R=  67.9 goal=0.66 concede=0.00 | 1051s
+[135/510 | 122 min] done    B obs=0.1 d=0 seed=7 | R=  92.0 goal=0.90 concede=0.00 | 977s
+[136/510 | 122 min] done   R2 obs=0.15 d=0 seed=0 | R=  36.0 goal=0.34 concede=0.00 | 735s
+[137/510 | 122 min] done    B obs=0.1 d=0 seed=4 | R=  75.6 goal=0.73 concede=0.00 | 1117s
+[138/510 | 122 min] done   R2 obs=0.15 d=0 seed=1 | R=  61.1 goal=0.59 concede=0.00 | 669s
+[139/510 | 122 min] done    B obs=0.1 d=0 seed=5 | R=  60.1 goal=0.57 concede=0.00 | 1129s
+[140/510 | 123 min] done   R2 obs=0.15 d=0 seed=3 | R=  68.9 goal=0.67 concede=0.00 | 639s
+[141/510 | 123 min] done   R2 obs=0.15 d=0 seed=2 | R=  66.4 goal=0.65 concede=0.00 | 669s
+[142/510 | 124 min] done    B obs=0.1 d=0 seed=9 | R=  79.3 goal=0.77 concede=0.00 | 1041s
+[143/510 | 124 min] done   R2 obs=0.15 d=0 seed=6 | R=  97.7 goal=0.96 concede=0.00 | 629s
+[144/510 | 124 min] done   R2 obs=0.15 d=0 seed=5 | R=  82.8 goal=0.81 concede=0.00 | 670s
+[145/510 | 125 min] done    B obs=0.1 d=0 seed=6 | R=  47.6 goal=0.44 concede=0.00 | 1233s
+[146/510 | 125 min] done   R2 obs=0.15 d=0 seed=4 | R=  50.0 goal=0.47 concede=0.00 | 717s
+[147/510 | 125 min] done   R2 obs=0.15 d=0 seed=7 | R=  85.5 goal=0.83 concede=0.00 | 651s
+[148/510 | 125 min] done    B obs=0.1 d=0 seed=8 | R=  81.9 goal=0.80 concede=0.00 | 1154s
+[149/510 | 125 min] done   R2 obs=0.15 d=0 seed=8 | R=  93.5 goal=0.92 concede=0.00 | 628s
+[150/510 | 128 min] done   R2 obs=0.15 d=0 seed=9 | R=  74.3 goal=0.72 concede=0.00 | 651s
+[151/510 | 129 min] done   R5 obs=0.15 d=0 seed=0 | R=  76.5 goal=0.74 concede=0.00 | 716s
+[152/510 | 132 min] done   R5 obs=0.15 d=0 seed=1 | R=  84.9 goal=0.83 concede=0.00 | 718s
+[153/510 | 133 min] done   R5 obs=0.15 d=0 seed=2 | R=  81.2 goal=0.79 concede=0.00 | 721s
+[154/510 | 133 min] done   R5 obs=0.15 d=0 seed=5 | R=  64.3 goal=0.62 concede=0.01 | 676s
+[155/510 | 133 min] done   R5 obs=0.15 d=0 seed=3 | R=  78.4 goal=0.77 concede=0.00 | 729s
+[156/510 | 134 min] done  R10 obs=0.15 d=0 seed=0 | R=  96.2 goal=0.94 concede=0.00 | 643s
+[157/510 | 134 min] done   R5 obs=0.15 d=0 seed=7 | R=  66.1 goal=0.65 concede=0.01 | 688s
+[158/510 | 134 min] done   R5 obs=0.15 d=0 seed=9 | R=  82.3 goal=0.81 concede=0.00 | 663s
+[159/510 | 134 min] done   R5 obs=0.15 d=0 seed=8 | R=  90.3 goal=0.89 concede=0.00 | 698s
+[160/510 | 134 min] done   R5 obs=0.15 d=0 seed=4 | R=  67.7 goal=0.66 concede=0.00 | 761s
+[161/510 | 134 min] done   R5 obs=0.15 d=0 seed=6 | R=  75.8 goal=0.74 concede=0.00 | 733s
+[162/510 | 135 min] done  R10 obs=0.15 d=0 seed=3 | R=  77.9 goal=0.76 concede=0.00 | 641s
+[163/510 | 135 min] done  R10 obs=0.15 d=0 seed=5 | R=  88.6 goal=0.87 concede=0.00 | 625s
+[164/510 | 136 min] done  R10 obs=0.15 d=0 seed=6 | R=  90.4 goal=0.89 concede=0.00 | 639s
+[165/510 | 136 min] done  R10 obs=0.15 d=0 seed=2 | R=  74.0 goal=0.72 concede=0.00 | 689s
+[166/510 | 136 min] done  R10 obs=0.15 d=0 seed=1 | R=  94.5 goal=0.93 concede=0.00 | 735s
+[167/510 | 137 min] done  R10 obs=0.15 d=0 seed=4 | R=  76.2 goal=0.74 concede=0.00 | 732s
+[168/510 | 137 min] done  R10 obs=0.15 d=0 seed=8 | R=  44.7 goal=0.42 concede=0.00 | 724s
+[169/510 | 138 min] done  R10 obs=0.15 d=0 seed=7 | R=  65.8 goal=0.63 concede=0.00 | 774s
+[170/510 | 139 min] done  R10 obs=0.15 d=0 seed=9 | R=  47.5 goal=0.45 concede=0.00 | 706s
+[171/510 | 143 min] done  R20 obs=0.15 d=0 seed=0 | R=  15.5 goal=0.12 concede=0.00 | 829s
+[172/510 | 144 min] done  R20 obs=0.15 d=0 seed=1 | R=  90.5 goal=0.89 concede=0.00 | 713s
+[173/510 | 144 min] done  R20 obs=0.15 d=0 seed=3 | R=  86.7 goal=0.85 concede=0.00 | 647s
+[174/510 | 144 min] done  R20 obs=0.15 d=0 seed=5 | R=  70.0 goal=0.68 concede=0.00 | 646s
+[175/510 | 145 min] done  R20 obs=0.15 d=0 seed=7 | R=  77.0 goal=0.75 concede=0.00 | 651s
+[176/510 | 145 min] done  R20 obs=0.15 d=0 seed=6 | R=  77.1 goal=0.76 concede=0.00 | 660s
+[177/510 | 145 min] done  R20 obs=0.15 d=0 seed=2 | R=  63.4 goal=0.61 concede=0.00 | 726s
+[178/510 | 146 min] done  Rinf obs=0.15 d=0 seed=1 | R=  95.8 goal=0.94 concede=0.00 | 624s
+[179/510 | 146 min] done  Rinf obs=0.15 d=0 seed=2 | R=  95.2 goal=0.94 concede=0.00 | 619s
+[180/510 | 146 min] done  R20 obs=0.15 d=0 seed=4 | R=  61.6 goal=0.59 concede=0.00 | 770s
+[181/510 | 146 min] done  R20 obs=0.15 d=0 seed=8 | R=  78.8 goal=0.77 concede=0.00 | 730s
+[182/510 | 146 min] done  Rinf obs=0.15 d=0 seed=3 | R=  85.1 goal=0.83 concede=0.00 | 636s
+[183/510 | 147 min] done  Rinf obs=0.15 d=0 seed=4 | R=  87.7 goal=0.86 concede=0.00 | 653s
+[184/510 | 147 min] done  Rinf obs=0.15 d=0 seed=0 | R=  81.6 goal=0.80 concede=0.00 | 748s
+[185/510 | 147 min] done  R20 obs=0.15 d=0 seed=9 | R=  60.7 goal=0.58 concede=0.00 | 784s
+[186/510 | 147 min] done  Rinf obs=0.15 d=0 seed=7 | R=  95.1 goal=0.94 concede=0.00 | 603s
+[187/510 | 148 min] done  Rinf obs=0.15 d=0 seed=5 | R=  72.2 goal=0.70 concede=0.00 | 719s
+[188/510 | 149 min] done  Rinf obs=0.15 d=0 seed=6 | R=  64.6 goal=0.63 concede=0.00 | 712s
+[189/510 | 150 min] done  Rinf obs=0.15 d=0 seed=8 | R=  91.9 goal=0.91 concede=0.00 | 697s
+[190/510 | 150 min] done  Rinf obs=0.15 d=0 seed=9 | R=  83.7 goal=0.82 concede=0.00 | 633s
+[191/510 | 154 min] done   R2 obs=0.1 d=0 seed=2 | R=  77.9 goal=0.76 concede=0.00 | 600s
+[192/510 | 155 min] done   R2 obs=0.1 d=0 seed=5 | R=  72.8 goal=0.70 concede=0.00 | 628s
+[193/510 | 156 min] done   R2 obs=0.1 d=0 seed=1 | R=  73.0 goal=0.70 concede=0.00 | 717s
+[194/510 | 156 min] done   R2 obs=0.1 d=0 seed=8 | R=  92.1 goal=0.90 concede=0.00 | 600s
+[195/510 | 156 min] done   R2 obs=0.1 d=0 seed=0 | R=  63.8 goal=0.60 concede=0.00 | 794s
+[196/510 | 156 min] done   R2 obs=0.1 d=0 seed=3 | R=  44.8 goal=0.41 concede=0.00 | 705s
+[197/510 | 157 min] done   R2 obs=0.1 d=0 seed=6 | R=  72.9 goal=0.70 concede=0.00 | 729s
+[198/510 | 157 min] done   R2 obs=0.1 d=0 seed=4 | R=  13.4 goal=0.10 concede=0.00 | 745s
+[199/510 | 157 min] done   R2 obs=0.1 d=0 seed=7 | R=  58.1 goal=0.55 concede=0.00 | 704s
+[200/510 | 158 min] done   R5 obs=0.1 d=0 seed=0 | R=  80.1 goal=0.78 concede=0.00 | 674s
+[201/510 | 158 min] done   R2 obs=0.1 d=0 seed=9 | R=  89.0 goal=0.87 concede=0.00 | 700s
+[202/510 | 158 min] done   R5 obs=0.1 d=0 seed=1 | R=  49.9 goal=0.47 concede=0.00 | 678s
+[203/510 | 158 min] done   R5 obs=0.1 d=0 seed=2 | R=  57.8 goal=0.56 concede=0.00 | 679s
+[204/510 | 159 min] done   R5 obs=0.1 d=0 seed=5 | R=  52.7 goal=0.49 concede=0.00 | 688s
+[205/510 | 159 min] done   R5 obs=0.1 d=0 seed=4 | R=  65.9 goal=0.64 concede=0.00 | 721s
+[206/510 | 160 min] done   R5 obs=0.1 d=0 seed=3 | R=  65.6 goal=0.62 concede=0.00 | 756s
+[207/510 | 161 min] done   R5 obs=0.1 d=0 seed=6 | R=  49.9 goal=0.47 concede=0.00 | 764s
+[208/510 | 162 min] done   R5 obs=0.1 d=0 seed=8 | R=  71.2 goal=0.69 concede=0.00 | 712s
+[209/510 | 162 min] done   R5 obs=0.1 d=0 seed=7 | R=  70.5 goal=0.68 concede=0.00 | 781s
+[210/510 | 162 min] done   R5 obs=0.1 d=0 seed=9 | R=  55.4 goal=0.52 concede=0.00 | 707s
+[211/510 | 165 min] done  R10 obs=0.1 d=0 seed=0 | R=  63.3 goal=0.61 concede=0.00 | 677s
+[212/510 | 167 min] done  R10 obs=0.1 d=0 seed=1 | R=  57.5 goal=0.56 concede=0.01 | 681s
+[213/510 | 167 min] done  R10 obs=0.1 d=0 seed=5 | R=  78.7 goal=0.77 concede=0.00 | 644s
+[214/510 | 168 min] done  R10 obs=0.1 d=0 seed=7 | R=  72.5 goal=0.70 concede=0.00 | 647s
+[215/510 | 168 min] done  R10 obs=0.1 d=0 seed=3 | R=   7.5 goal=0.05 concede=0.01 | 745s
+[216/510 | 168 min] done  R10 obs=0.1 d=0 seed=8 | R=  71.3 goal=0.69 concede=0.00 | 670s
+[217/510 | 169 min] done  R20 obs=0.1 d=0 seed=1 | R=  69.0 goal=0.67 concede=0.00 | 657s
+[218/510 | 169 min] done  R20 obs=0.1 d=0 seed=2 | R=  60.7 goal=0.59 concede=0.00 | 652s
+[219/510 | 169 min] done  R10 obs=0.1 d=0 seed=6 | R=  73.4 goal=0.71 concede=0.00 | 711s
+[220/510 | 169 min] done  R10 obs=0.1 d=0 seed=4 | R=  58.9 goal=0.56 concede=0.00 | 772s
+[221/510 | 169 min] done  R10 obs=0.1 d=0 seed=2 | R=  26.7 goal=0.23 concede=0.00 | 822s
+[222/510 | 169 min] done  R20 obs=0.1 d=0 seed=0 | R=  79.2 goal=0.78 concede=0.00 | 714s
+[223/510 | 170 min] done  R20 obs=0.1 d=0 seed=3 | R=  61.8 goal=0.59 concede=0.00 | 665s
+[224/510 | 171 min] done  R10 obs=0.1 d=0 seed=9 | R=  58.1 goal=0.56 concede=0.00 | 784s
+[225/510 | 172 min] done  R20 obs=0.1 d=0 seed=4 | R=  70.7 goal=0.69 concede=0.00 | 767s
+[226/510 | 173 min] done  R20 obs=0.1 d=0 seed=9 | R=  65.4 goal=0.63 concede=0.00 | 651s
+[227/510 | 173 min] done  R20 obs=0.1 d=0 seed=6 | R=  63.2 goal=0.61 concede=0.00 | 755s
+[228/510 | 174 min] done  R20 obs=0.1 d=0 seed=5 | R=  10.6 goal=0.09 concede=0.00 | 859s
+[229/510 | 174 min] done  R20 obs=0.1 d=0 seed=8 | R=  77.6 goal=0.76 concede=0.00 | 728s
+[230/510 | 174 min] done  R20 obs=0.1 d=0 seed=7 | R=  72.4 goal=0.70 concede=0.00 | 745s
+[231/510 | 176 min] done  Rinf obs=0.1 d=0 seed=0 | R=  79.4 goal=0.78 concede=0.00 | 642s
+[232/510 | 178 min] done  Rinf obs=0.1 d=0 seed=1 | R=  72.6 goal=0.70 concede=0.00 | 659s
+[233/510 | 178 min] done  Rinf obs=0.1 d=0 seed=2 | R=  82.4 goal=0.80 concede=0.00 | 678s
+[234/510 | 179 min] done  Rinf obs=0.1 d=0 seed=3 | R=  87.2 goal=0.85 concede=0.00 | 655s
+[235/510 | 180 min] done  Rinf obs=0.1 d=0 seed=7 | R=  85.3 goal=0.83 concede=0.00 | 656s
+[236/510 | 180 min] done  Rinf obs=0.1 d=0 seed=6 | R=  90.4 goal=0.88 concede=0.00 | 688s
+[237/510 | 180 min] done   F2 obs=0.15 d=0 seed=0 | R=  90.1 goal=0.89 concede=0.00 | 636s
+[238/510 | 180 min] done  Rinf obs=0.1 d=0 seed=5 | R=  43.5 goal=0.41 concede=0.01 | 696s
+[239/510 | 180 min] done  Rinf obs=0.1 d=0 seed=4 | R=  45.1 goal=0.42 concede=0.00 | 721s
+[240/510 | 181 min] done  Rinf obs=0.1 d=0 seed=8 | R=  90.3 goal=0.89 concede=0.00 | 729s
+[241/510 | 181 min] done   F2 obs=0.15 d=0 seed=2 | R=  79.5 goal=0.78 concede=0.00 | 669s
+[242/510 | 182 min] done   F2 obs=0.15 d=0 seed=3 | R=  90.1 goal=0.89 concede=0.00 | 657s
+[243/510 | 182 min] done  Rinf obs=0.1 d=0 seed=9 | R=  32.9 goal=0.30 concede=0.00 | 795s
+[244/510 | 182 min] done   F2 obs=0.15 d=0 seed=1 | R=  73.2 goal=0.71 concede=0.00 | 781s
+[245/510 | 183 min] done   F2 obs=0.15 d=0 seed=5 | R=  85.2 goal=0.83 concede=0.00 | 627s
+[246/510 | 184 min] done   F2 obs=0.15 d=0 seed=4 | R=  84.6 goal=0.83 concede=0.00 | 704s
+[247/510 | 185 min] done   F2 obs=0.15 d=0 seed=6 | R=  90.4 goal=0.89 concede=0.00 | 723s
+[248/510 | 186 min] done   F2 obs=0.15 d=0 seed=9 | R=  88.4 goal=0.86 concede=0.00 | 689s
+[249/510 | 186 min] done   F2 obs=0.15 d=0 seed=8 | R=  85.6 goal=0.84 concede=0.00 | 710s
+[250/510 | 186 min] done   F2 obs=0.15 d=0 seed=7 | R=  79.3 goal=0.78 concede=0.00 | 727s
+[251/510 | 186 min] done   F5 obs=0.15 d=0 seed=0 | R=  80.2 goal=0.79 concede=0.00 | 642s
+[252/510 | 188 min] done   F5 obs=0.15 d=0 seed=1 | R=  78.4 goal=0.77 concede=0.00 | 648s
+[253/510 | 189 min] done   F5 obs=0.15 d=0 seed=2 | R=  82.5 goal=0.81 concede=0.00 | 661s
+[254/510 | 190 min] done   F5 obs=0.15 d=0 seed=3 | R=  63.8 goal=0.61 concede=0.00 | 697s
+[255/510 | 191 min] done   F5 obs=0.15 d=0 seed=5 | R=  81.9 goal=0.80 concede=0.00 | 636s
+[256/510 | 191 min] done   F5 obs=0.15 d=0 seed=7 | R=  65.4 goal=0.63 concede=0.00 | 668s
+[257/510 | 191 min] done   F5 obs=0.15 d=0 seed=8 | R=  87.0 goal=0.85 concede=0.00 | 661s
+[258/510 | 192 min] done   F5 obs=0.15 d=0 seed=4 | R=  36.4 goal=0.34 concede=0.00 | 727s
+[259/510 | 192 min] done   F5 obs=0.15 d=0 seed=6 | R=  88.9 goal=0.88 concede=0.00 | 730s
+[260/510 | 193 min] done   F5 obs=0.15 d=0 seed=9 | R=  73.5 goal=0.71 concede=0.00 | 708s
+[261/510 | 194 min] done  F10 obs=0.15 d=0 seed=0 | R=  49.7 goal=0.47 concede=0.00 | 740s
+[262/510 | 194 min] done  F10 obs=0.15 d=0 seed=1 | R=  83.4 goal=0.82 concede=0.00 | 727s
+[263/510 | 194 min] done  F10 obs=0.15 d=0 seed=4 | R=  80.6 goal=0.79 concede=0.00 | 659s
+[264/510 | 195 min] done  F10 obs=0.15 d=0 seed=2 | R=  85.3 goal=0.83 concede=0.00 | 749s
+[265/510 | 195 min] done  F10 obs=0.15 d=0 seed=3 | R=  73.9 goal=0.71 concede=0.00 | 774s
+[266/510 | 197 min] done  F10 obs=0.15 d=0 seed=5 | R=  80.2 goal=0.79 concede=0.00 | 764s
+[267/510 | 197 min] done  F20 obs=0.15 d=0 seed=0 | R=  93.6 goal=0.92 concede=0.00 | 623s
+[268/510 | 197 min] done  F10 obs=0.15 d=0 seed=8 | R=  84.2 goal=0.82 concede=0.00 | 706s
+[269/510 | 198 min] done  F10 obs=0.15 d=0 seed=6 | R=  91.5 goal=0.90 concede=0.00 | 728s
+[270/510 | 198 min] done  F10 obs=0.15 d=0 seed=9 | R=  64.9 goal=0.62 concede=0.00 | 753s
+[271/510 | 199 min] done  F10 obs=0.15 d=0 seed=7 | R=  49.9 goal=0.47 concede=0.00 | 816s
+[272/510 | 199 min] done  F20 obs=0.15 d=0 seed=1 | R=  85.1 goal=0.83 concede=0.00 | 663s
+[273/510 | 201 min] done  F20 obs=0.15 d=0 seed=2 | R=  59.6 goal=0.57 concede=0.00 | 697s
+[274/510 | 201 min] done  F20 obs=0.15 d=0 seed=3 | R=  93.7 goal=0.92 concede=0.00 | 626s
+[275/510 | 201 min] done  F20 obs=0.15 d=0 seed=4 | R=  92.0 goal=0.90 concede=0.00 | 624s
+[276/510 | 201 min] done  F20 obs=0.15 d=0 seed=6 | R=  97.0 goal=0.95 concede=0.00 | 607s
+[277/510 | 203 min] done  F20 obs=0.15 d=0 seed=5 | R=  74.9 goal=0.72 concede=0.00 | 690s
+[278/510 | 203 min] done  F20 obs=0.15 d=0 seed=7 | R=  84.5 goal=0.82 concede=0.00 | 674s
+[279/510 | 205 min] done  F20 obs=0.15 d=0 seed=9 | R=  84.2 goal=0.83 concede=0.01 | 725s
+[280/510 | 205 min] done  Finf obs=0.15 d=0 seed=0 | R=  61.6 goal=0.60 concede=0.01 | 683s
+[281/510 | 206 min] done  F20 obs=0.15 d=0 seed=8 | R=  63.3 goal=0.61 concede=0.00 | 803s
+[282/510 | 206 min] done  Finf obs=0.15 d=0 seed=1 | R=  86.3 goal=0.84 concede=0.00 | 718s
+[283/510 | 206 min] done  Finf obs=0.15 d=0 seed=2 | R=  68.9 goal=0.67 concede=0.00 | 699s
+[284/510 | 207 min] done  Finf obs=0.15 d=0 seed=4 | R=  89.0 goal=0.87 concede=0.00 | 711s
+[285/510 | 207 min] done  Finf obs=0.15 d=0 seed=6 | R=  94.1 goal=0.93 concede=0.00 | 626s
+[286/510 | 208 min] done  Finf obs=0.15 d=0 seed=3 | R=  85.3 goal=0.83 concede=0.00 | 770s
+[287/510 | 209 min] done  Finf obs=0.15 d=0 seed=5 | R=  79.3 goal=0.78 concede=0.00 | 751s
+[288/510 | 209 min] done  Finf obs=0.15 d=0 seed=8 | R=  91.2 goal=0.90 concede=0.00 | 705s
+[289/510 | 210 min] done  Finf obs=0.15 d=0 seed=7 | R=  74.7 goal=0.73 concede=0.00 | 779s
+[290/510 | 211 min] done   F2 obs=0.1 d=0 seed=1 | R=  66.2 goal=0.64 concede=0.00 | 685s
+[291/510 | 211 min] done   F2 obs=0.1 d=0 seed=0 | R=  79.3 goal=0.77 concede=0.00 | 724s
+[292/510 | 211 min] done  Finf obs=0.15 d=0 seed=9 | R=  80.9 goal=0.79 concede=0.00 | 766s
+[293/510 | 212 min] done   F2 obs=0.1 d=0 seed=3 | R=  49.2 goal=0.47 concede=0.00 | 660s
+[294/510 | 212 min] done   F2 obs=0.1 d=0 seed=2 | R=  70.2 goal=0.68 concede=0.00 | 663s
+[295/510 | 212 min] done   F2 obs=0.1 d=0 seed=5 | R=  73.0 goal=0.71 concede=0.01 | 652s
+[296/510 | 213 min] done   F2 obs=0.1 d=0 seed=4 | R=  57.2 goal=0.54 concede=0.00 | 700s
+[297/510 | 213 min] done   F2 obs=0.1 d=0 seed=6 | R=  70.7 goal=0.69 concede=0.00 | 621s
+[298/510 | 215 min] done   F2 obs=0.1 d=0 seed=7 | R=  52.6 goal=0.49 concede=0.00 | 708s
+[299/510 | 215 min] done   F2 obs=0.1 d=0 seed=9 | R=  72.3 goal=0.70 concede=0.00 | 628s
+[300/510 | 217 min] done   F2 obs=0.1 d=0 seed=8 | R=  57.5 goal=0.55 concede=0.00 | 740s
+[301/510 | 218 min] done   F5 obs=0.1 d=0 seed=2 | R=  24.2 goal=0.20 concede=0.00 | 712s
+[302/510 | 218 min] done   F5 obs=0.1 d=0 seed=0 | R=  69.7 goal=0.67 concede=0.00 | 751s
+[303/510 | 219 min] done   F5 obs=0.1 d=0 seed=4 | R=  55.6 goal=0.53 concede=0.00 | 717s
+[304/510 | 219 min] done   F5 obs=0.1 d=0 seed=1 | R=  38.3 goal=0.36 concede=0.01 | 820s
+[305/510 | 221 min] done   F5 obs=0.1 d=0 seed=3 | R=  54.4 goal=0.51 concede=0.00 | 798s
+[306/510 | 221 min] done   F5 obs=0.1 d=0 seed=5 | R=  42.5 goal=0.40 concede=0.00 | 804s
+[307/510 | 222 min] done   F5 obs=0.1 d=0 seed=7 | R=  70.7 goal=0.68 concede=0.00 | 779s
+[308/510 | 222 min] done   F5 obs=0.1 d=0 seed=6 | R=  54.5 goal=0.52 concede=0.00 | 795s
+[309/510 | 223 min] done   F5 obs=0.1 d=0 seed=9 | R=  40.8 goal=0.39 concede=0.01 | 709s
+[310/510 | 223 min] done  F10 obs=0.1 d=0 seed=2 | R=  65.2 goal=0.62 concede=0.00 | 678s
+[311/510 | 223 min] done   F5 obs=0.1 d=0 seed=8 | R=  66.0 goal=0.64 concede=0.00 | 781s
+[312/510 | 224 min] done  F10 obs=0.1 d=0 seed=3 | R=  37.4 goal=0.34 concede=0.00 | 737s
+[313/510 | 224 min] done  F10 obs=0.1 d=0 seed=4 | R=  61.9 goal=0.59 concede=0.00 | 730s
+[314/510 | 225 min] done  F10 obs=0.1 d=0 seed=6 | R=  62.7 goal=0.60 concede=0.00 | 696s
+[315/510 | 225 min] done  F10 obs=0.1 d=0 seed=5 | R=  23.7 goal=0.21 concede=0.00 | 726s
+[316/510 | 226 min] done  F10 obs=0.1 d=0 seed=0 | R=   8.1 goal=0.06 concede=0.00 | 861s
+[317/510 | 226 min] done  F10 obs=0.1 d=0 seed=1 | R=  10.5 goal=0.07 concede=0.00 | 867s
+[318/510 | 227 min] done  F10 obs=0.1 d=0 seed=7 | R=  74.2 goal=0.71 concede=0.00 | 712s
+[319/510 | 228 min] done  F10 obs=0.1 d=0 seed=8 | R=  39.4 goal=0.36 concede=0.00 | 736s
+[320/510 | 230 min] done  F20 obs=0.1 d=0 seed=0 | R=  65.0 goal=0.62 concede=0.00 | 725s
+[321/510 | 230 min] done  F20 obs=0.1 d=0 seed=2 | R=  78.6 goal=0.77 concede=0.00 | 641s
+[322/510 | 230 min] done  F10 obs=0.1 d=0 seed=9 | R=  55.3 goal=0.53 concede=0.00 | 782s
+[323/510 | 231 min] done  F20 obs=0.1 d=0 seed=1 | R=  82.3 goal=0.80 concede=0.00 | 764s
+[324/510 | 232 min] done  F20 obs=0.1 d=0 seed=3 | R=  74.6 goal=0.72 concede=0.00 | 776s
+[325/510 | 233 min] done  F20 obs=0.1 d=0 seed=5 | R=  93.6 goal=0.92 concede=0.00 | 697s
+[326/510 | 234 min] done  F20 obs=0.1 d=0 seed=4 | R=  46.9 goal=0.45 concede=0.00 | 821s
+[327/510 | 234 min] done  F20 obs=0.1 d=0 seed=8 | R=  55.5 goal=0.53 concede=0.00 | 702s
+[328/510 | 234 min] done  Finf obs=0.1 d=0 seed=1 | R=  92.0 goal=0.90 concede=0.00 | 613s
+[329/510 | 235 min] done  F20 obs=0.1 d=0 seed=9 | R=  49.3 goal=0.47 concede=0.01 | 705s
+[330/510 | 235 min] done  F20 obs=0.1 d=0 seed=6 | R=  63.3 goal=0.61 concede=0.00 | 757s
+[331/510 | 235 min] done  Finf obs=0.1 d=0 seed=3 | R=  90.8 goal=0.89 concede=0.00 | 620s
+[332/510 | 236 min] done  F20 obs=0.1 d=0 seed=7 | R=  31.7 goal=0.29 concede=0.00 | 804s
+[333/510 | 236 min] done  Finf obs=0.1 d=0 seed=2 | R=  80.4 goal=0.79 concede=0.00 | 687s
+[334/510 | 236 min] done  Finf obs=0.1 d=0 seed=4 | R=  67.6 goal=0.66 concede=0.00 | 677s
+[335/510 | 237 min] done  Finf obs=0.1 d=0 seed=0 | R=  70.3 goal=0.68 concede=0.00 | 792s
+[336/510 | 237 min] done  Finf obs=0.1 d=0 seed=5 | R=  81.2 goal=0.80 concede=0.01 | 702s
+[337/510 | 238 min] done  Finf obs=0.1 d=0 seed=6 | R=  87.1 goal=0.85 concede=0.00 | 713s
+[338/510 | 238 min] done  Finf obs=0.1 d=0 seed=7 | R=  76.8 goal=0.74 concede=0.00 | 678s
+[339/510 | 239 min] done  Finf obs=0.1 d=0 seed=8 | R=  46.3 goal=0.43 concede=0.00 | 706s
+[340/510 | 242 min] done  Finf obs=0.1 d=0 seed=9 | R=  33.8 goal=0.31 concede=0.00 | 733s
+[341/510 | 246 min] done    B obs=0.15 d=1 seed=0 | R=  72.5 goal=0.71 concede=0.00 | 957s
+[342/510 | 248 min] done    B obs=0.15 d=1 seed=1 | R=  80.5 goal=0.79 concede=0.00 | 1067s
+[343/510 | 249 min] done    B obs=0.15 d=1 seed=2 | R=  69.7 goal=0.68 concede=0.00 | 1113s
+[344/510 | 250 min] done    B obs=0.15 d=1 seed=3 | R=  87.9 goal=0.86 concede=0.00 | 1072s
+[345/510 | 250 min] done    B obs=0.15 d=1 seed=6 | R=  87.3 goal=0.85 concede=0.00 | 955s
+[346/510 | 251 min] done    B obs=0.15 d=1 seed=4 | R=  78.0 goal=0.76 concede=0.00 | 1103s
+[347/510 | 251 min] done    B obs=0.15 d=1 seed=8 | R=  67.8 goal=0.66 concede=0.00 | 966s
+[348/510 | 252 min] done    B obs=0.15 d=2 seed=2 | R=  84.8 goal=0.83 concede=0.00 | 968s
+[349/510 | 252 min] done    B obs=0.15 d=1 seed=7 | R=  20.2 goal=0.17 concede=0.00 | 1074s
+[350/510 | 252 min] done    B obs=0.15 d=2 seed=3 | R=  77.2 goal=0.76 concede=0.00 | 988s
+[351/510 | 253 min] done    B obs=0.15 d=1 seed=9 | R=  75.1 goal=0.73 concede=0.00 | 1103s
+[352/510 | 254 min] done    B obs=0.15 d=2 seed=0 | R=   4.4 goal=0.03 concede=0.00 | 1127s
+[353/510 | 254 min] done    B obs=0.15 d=2 seed=1 | R=  80.8 goal=0.79 concede=0.00 | 1095s
+[354/510 | 254 min] done    B obs=0.15 d=2 seed=7 | R=  85.7 goal=0.84 concede=0.00 | 965s
+[355/510 | 255 min] done    B obs=0.15 d=1 seed=5 | R=  18.6 goal=0.15 concede=0.00 | 1224s
+[356/510 | 255 min] done    B obs=0.15 d=2 seed=4 | R=  51.7 goal=0.50 concede=0.00 | 1093s
+[357/510 | 255 min] done    B obs=0.15 d=2 seed=5 | R=  75.1 goal=0.73 concede=0.00 | 1080s
+[358/510 | 256 min] done    B obs=0.15 d=2 seed=8 | R=  70.0 goal=0.68 concede=0.00 | 980s
+[359/510 | 256 min] done    B obs=0.15 d=2 seed=6 | R=  85.4 goal=0.84 concede=0.00 | 1101s
+[360/510 | 260 min] done    B obs=0.15 d=2 seed=9 | R=  32.1 goal=0.29 concede=0.00 | 1067s
+[361/510 | 261 min] done    B obs=0.15 d=5 seed=0 | R=  83.0 goal=0.81 concede=0.01 | 890s
+[362/510 | 265 min] done  Rinf obs=0.15 d=1 seed=3 | R=  79.5 goal=0.78 concede=0.00 | 657s
+[363/510 | 265 min] done    B obs=0.15 d=5 seed=6 | R=  88.7 goal=0.87 concede=0.00 | 869s
+[364/510 | 266 min] done  Rinf obs=0.15 d=1 seed=1 | R=  61.0 goal=0.59 concede=0.00 | 725s
+[365/510 | 266 min] done    B obs=0.15 d=5 seed=4 | R=  76.8 goal=0.74 concede=0.00 | 959s
+[366/510 | 266 min] done  Rinf obs=0.15 d=1 seed=2 | R=  90.1 goal=0.88 concede=0.00 | 742s
+[367/510 | 266 min] done  Rinf obs=0.15 d=1 seed=7 | R=  74.8 goal=0.73 concede=0.00 | 643s
+[368/510 | 267 min] done    B obs=0.15 d=5 seed=1 | R=  66.3 goal=0.64 concede=0.00 | 1127s
+[369/510 | 267 min] done  Rinf obs=0.15 d=1 seed=8 | R=  90.3 goal=0.89 concede=0.00 | 658s
+[370/510 | 267 min] done  Rinf obs=0.15 d=1 seed=0 | R=  10.2 goal=0.07 concede=0.00 | 838s
+[371/510 | 267 min] done  Rinf obs=0.15 d=1 seed=5 | R=  81.3 goal=0.80 concede=0.00 | 747s
+[372/510 | 268 min] done  Rinf obs=0.15 d=1 seed=4 | R=  44.5 goal=0.42 concede=0.00 | 788s
+[373/510 | 268 min] done    B obs=0.15 d=5 seed=2 | R=  83.3 goal=0.81 concede=0.00 | 1136s
+[374/510 | 268 min] done    B obs=0.15 d=5 seed=5 | R=  88.2 goal=0.86 concede=0.00 | 1043s
+[375/510 | 268 min] done    B obs=0.15 d=5 seed=8 | R=  73.3 goal=0.71 concede=0.00 | 965s
+[376/510 | 269 min] done    B obs=0.15 d=5 seed=3 | R=  58.9 goal=0.57 concede=0.00 | 1117s
+[377/510 | 269 min] done    B obs=0.15 d=5 seed=7 | R=  47.6 goal=0.45 concede=0.00 | 1013s
+[378/510 | 269 min] done    B obs=0.15 d=5 seed=9 | R=  66.4 goal=0.65 concede=0.00 | 1011s
+[379/510 | 269 min] done  Rinf obs=0.15 d=1 seed=6 | R=  20.5 goal=0.18 concede=0.00 | 847s
+[380/510 | 271 min] done  Rinf obs=0.15 d=1 seed=9 | R=  85.8 goal=0.84 concede=0.00 | 657s
+[381/510 | 272 min] done  Rinf obs=0.15 d=2 seed=0 | R=  57.5 goal=0.56 concede=0.01 | 704s
+[382/510 | 276 min] done  Rinf obs=0.15 d=2 seed=1 | R=  78.7 goal=0.77 concede=0.00 | 656s
+[383/510 | 276 min] done  Rinf obs=0.15 d=2 seed=6 | R=  89.4 goal=0.88 concede=0.00 | 596s
+[384/510 | 277 min] done  Rinf obs=0.15 d=2 seed=2 | R=  52.9 goal=0.52 concede=0.01 | 687s
+[385/510 | 278 min] done  Rinf obs=0.15 d=2 seed=4 | R=  67.9 goal=0.66 concede=0.00 | 703s
+[386/510 | 278 min] done  Rinf obs=0.15 d=2 seed=3 | R=  18.3 goal=0.15 concede=0.00 | 747s
+[387/510 | 278 min] done  Rinf obs=0.15 d=2 seed=5 | R=  89.8 goal=0.88 concede=0.00 | 725s
+[388/510 | 279 min] done  Rinf obs=0.15 d=2 seed=7 | R=  79.2 goal=0.78 concede=0.00 | 721s
+[389/510 | 279 min] done  Rinf obs=0.15 d=5 seed=1 | R=  95.2 goal=0.94 concede=0.01 | 701s
+[390/510 | 280 min] done  Rinf obs=0.15 d=5 seed=6 | R=  75.9 goal=0.74 concede=0.00 | 673s
+[391/510 | 280 min] done  Rinf obs=0.15 d=2 seed=9 | R=  88.8 goal=0.87 concede=0.00 | 772s
+[392/510 | 280 min] done  Rinf obs=0.15 d=5 seed=4 | R=  48.5 goal=0.46 concede=0.00 | 708s
+[393/510 | 280 min] done  Rinf obs=0.15 d=2 seed=8 | R=  84.4 goal=0.82 concede=0.00 | 806s
+[394/510 | 280 min] done  Rinf obs=0.15 d=5 seed=7 | R=  80.3 goal=0.79 concede=0.00 | 665s
+[395/510 | 281 min] done  Rinf obs=0.15 d=5 seed=3 | R=  80.2 goal=0.79 concede=0.00 | 732s
+[396/510 | 281 min] done  Rinf obs=0.15 d=5 seed=2 | R=  73.7 goal=0.72 concede=0.00 | 736s
+[397/510 | 281 min] done  Rinf obs=0.15 d=5 seed=9 | R=  91.7 goal=0.90 concede=0.00 | 604s
+[398/510 | 281 min] done  Rinf obs=0.15 d=5 seed=0 | R=  42.5 goal=0.40 concede=0.00 | 803s
+[399/510 | 282 min] done  Rinf obs=0.15 d=5 seed=5 | R=  66.0 goal=0.64 concede=0.00 | 777s
+[400/510 | 282 min] done  Rinf obs=0.15 d=5 seed=8 | R=  77.1 goal=0.75 concede=0.00 | 757s
+[401/510 | 284 min] done  Finf obs=0.15 d=1 seed=0 | R=  57.1 goal=0.56 concede=0.01 | 691s
+[402/510 | 287 min] done  Finf obs=0.15 d=1 seed=3 | R=  97.1 goal=0.95 concede=0.00 | 593s
+[403/510 | 288 min] done  Finf obs=0.15 d=1 seed=1 | R=  65.8 goal=0.64 concede=0.00 | 703s
+[404/510 | 288 min] done  Finf obs=0.15 d=1 seed=2 | R=  65.4 goal=0.63 concede=0.00 | 707s
+[405/510 | 288 min] done  Finf obs=0.15 d=1 seed=5 | R=  92.6 goal=0.91 concede=0.00 | 595s
+[406/510 | 289 min] done  Finf obs=0.15 d=1 seed=4 | R=  64.2 goal=0.62 concede=0.00 | 668s
+[407/510 | 290 min] done  Finf obs=0.15 d=1 seed=6 | R=  98.7 goal=0.97 concede=0.00 | 663s
+[408/510 | 291 min] done  Finf obs=0.15 d=1 seed=9 | R=  91.8 goal=0.90 concede=0.00 | 642s
+[409/510 | 291 min] done  Finf obs=0.15 d=2 seed=3 | R=  86.0 goal=0.84 concede=0.00 | 638s
+[410/510 | 291 min] done  Finf obs=0.15 d=1 seed=7 | R=  89.3 goal=0.88 concede=0.00 | 749s
+[411/510 | 292 min] done  Finf obs=0.15 d=1 seed=8 | R=  97.6 goal=0.96 concede=0.00 | 734s
+[412/510 | 292 min] done  Finf obs=0.15 d=2 seed=0 | R=  96.7 goal=0.95 concede=0.01 | 726s
+[413/510 | 292 min] done  Finf obs=0.15 d=2 seed=1 | R=  27.8 goal=0.26 concede=0.00 | 732s
+[414/510 | 293 min] done  Finf obs=0.15 d=2 seed=6 | R=  34.6 goal=0.33 concede=0.00 | 732s
+[415/510 | 293 min] done  Finf obs=0.15 d=2 seed=2 | R=  90.5 goal=0.89 concede=0.00 | 755s
+[416/510 | 293 min] done  Finf obs=0.15 d=2 seed=7 | R=  87.8 goal=0.86 concede=0.00 | 742s
+[417/510 | 293 min] done  Finf obs=0.15 d=2 seed=4 | R=  88.0 goal=0.86 concede=0.00 | 757s
+[418/510 | 293 min] done  Finf obs=0.15 d=2 seed=5 | R=  83.6 goal=0.82 concede=0.00 | 755s
+[419/510 | 294 min] done  Finf obs=0.15 d=2 seed=8 | R=  77.6 goal=0.76 concede=0.00 | 734s
+[420/510 | 295 min] done  Finf obs=0.15 d=5 seed=0 | R=  86.5 goal=0.84 concede=0.00 | 636s
+[421/510 | 296 min] done  Finf obs=0.15 d=2 seed=9 | R=  45.5 goal=0.43 concede=0.00 | 829s
+[422/510 | 298 min] done  Finf obs=0.15 d=5 seed=1 | R=  83.3 goal=0.81 concede=0.00 | 658s
+[423/510 | 299 min] done  Finf obs=0.15 d=5 seed=2 | R=  59.8 goal=0.57 concede=0.00 | 703s
+[424/510 | 300 min] done  Finf obs=0.15 d=5 seed=3 | R=  46.0 goal=0.43 concede=0.00 | 718s
+[425/510 | 301 min] done  Finf obs=0.15 d=5 seed=4 | R=  41.5 goal=0.40 concede=0.01 | 743s
+[426/510 | 301 min] done  Finf obs=0.15 d=5 seed=5 | R=  75.9 goal=0.74 concede=0.00 | 704s
+[427/510 | 302 min] done  Finf obs=0.15 d=5 seed=6 | R=  75.2 goal=0.73 concede=0.00 | 745s
+[428/510 | 302 min] done    A obs=1.0 d=0 seed=2 | R=  82.8 goal=0.81 concede=0.00 | 574s
+[429/510 | 302 min] done  Finf obs=0.15 d=5 seed=7 | R=  73.7 goal=0.72 concede=0.00 | 690s
+[430/510 | 303 min] done  Finf obs=0.15 d=5 seed=8 | R=  72.0 goal=0.70 concede=0.00 | 699s
+[431/510 | 304 min] done    A obs=1.0 d=0 seed=1 | R=  91.3 goal=0.90 concede=0.00 | 693s
+[432/510 | 304 min] done    A obs=1.0 d=0 seed=0 | R=  70.0 goal=0.69 concede=0.00 | 736s
+[433/510 | 304 min] done    A obs=1.0 d=0 seed=4 | R=  93.6 goal=0.93 concede=0.00 | 681s
+[434/510 | 305 min] done    A obs=1.0 d=0 seed=9 | R=  94.0 goal=0.93 concede=0.00 | 603s
+[435/510 | 305 min] done    A obs=1.0 d=0 seed=3 | R=  47.6 goal=0.46 concede=0.00 | 707s
+[436/510 | 305 min] done    A obs=1.0 d=0 seed=6 | R=  97.4 goal=0.95 concede=0.00 | 708s
+[437/510 | 305 min] done  Finf obs=0.15 d=5 seed=9 | R=  61.4 goal=0.59 concede=0.00 | 828s
+[438/510 | 305 min] done    A obs=1.0 d=0 seed=5 | R=  88.3 goal=0.87 concede=0.00 | 720s
+[439/510 | 305 min] done    A obs=1.0 d=0 seed=8 | R=  90.7 goal=0.89 concede=0.00 | 681s
+[440/510 | 306 min] done    A obs=1.0 d=0 seed=7 | R=  88.4 goal=0.87 concede=0.00 | 746s
+[441/510 | 314 min] done    B obs=1.0 d=0 seed=1 | R=  91.0 goal=0.90 concede=0.01 | 950s
+[442/510 | 314 min] done    B obs=1.0 d=0 seed=0 | R=  89.7 goal=0.88 concede=0.00 | 1084s
+[443/510 | 316 min] done  Rinf obs=1.0 d=0 seed=4 | R=  80.3 goal=0.79 concede=0.00 | 666s
+[444/510 | 316 min] done    B obs=1.0 d=0 seed=2 | R=  85.7 goal=0.84 concede=0.00 | 988s
+[445/510 | 316 min] done  Rinf obs=1.0 d=0 seed=0 | R=  81.3 goal=0.80 concede=0.00 | 731s
+[446/510 | 316 min] done    B obs=1.0 d=0 seed=3 | R=  79.6 goal=0.78 concede=0.00 | 951s
+[447/510 | 316 min] done    B obs=1.0 d=0 seed=5 | R=  90.1 goal=0.89 concede=0.00 | 925s
+[448/510 | 316 min] done  Rinf obs=1.0 d=0 seed=3 | R=  76.8 goal=0.74 concede=0.00 | 697s
+[449/510 | 316 min] done  Rinf obs=1.0 d=0 seed=1 | R=  75.9 goal=0.74 concede=0.00 | 741s
+[450/510 | 317 min] done    B obs=1.0 d=0 seed=4 | R=  91.2 goal=0.90 concede=0.00 | 966s
+[451/510 | 317 min] done  Rinf obs=1.0 d=0 seed=6 | R=  89.6 goal=0.88 concede=0.00 | 710s
+[452/510 | 318 min] done  Rinf obs=1.0 d=0 seed=2 | R=  77.3 goal=0.76 concede=0.01 | 796s
+[453/510 | 318 min] done  Rinf obs=1.0 d=0 seed=7 | R=  84.9 goal=0.83 concede=0.00 | 756s
+[454/510 | 318 min] done    B obs=1.0 d=0 seed=9 | R=  93.0 goal=0.92 concede=0.00 | 925s
+[455/510 | 318 min] done  Rinf obs=1.0 d=0 seed=5 | R=  72.5 goal=0.71 concede=0.00 | 807s
+[456/510 | 319 min] done  Rinf obs=1.0 d=0 seed=9 | R=  83.5 goal=0.81 concede=0.00 | 782s
+[457/510 | 319 min] done  Rinf obs=1.0 d=0 seed=8 | R=  40.7 goal=0.39 concede=0.00 | 820s
+[458/510 | 320 min] done    B obs=1.0 d=0 seed=7 | R=  38.6 goal=0.36 concede=0.01 | 1088s
+[459/510 | 320 min] done    B obs=1.0 d=0 seed=8 | R=  59.5 goal=0.57 concede=0.00 | 1083s
+[460/510 | 320 min] done    B obs=1.0 d=0 seed=6 | R=  94.3 goal=0.93 concede=0.00 | 1107s
+[461/510 | 324 min] done  Finf obs=1.0 d=0 seed=0 | R=  81.3 goal=0.80 concede=0.00 | 648s
+[462/510 | 326 min] done  Finf obs=1.0 d=0 seed=1 | R=  75.9 goal=0.74 concede=0.00 | 732s
+[463/510 | 327 min] done  Finf obs=1.0 d=0 seed=6 | R=  89.6 goal=0.88 concede=0.00 | 635s
+[464/510 | 327 min] done  Finf obs=1.0 d=0 seed=7 | R=  84.9 goal=0.83 concede=0.00 | 658s
+[465/510 | 327 min] done  Finf obs=1.0 d=0 seed=2 | R=  77.3 goal=0.76 concede=0.01 | 699s
+[466/510 | 327 min] done  Finf obs=1.0 d=0 seed=3 | R=  76.8 goal=0.74 concede=0.00 | 694s
+[467/510 | 328 min] done  Finf obs=1.0 d=0 seed=5 | R=  72.5 goal=0.71 concede=0.00 | 716s
+[468/510 | 328 min] done  Finf obs=1.0 d=0 seed=9 | R=  83.5 goal=0.81 concede=0.00 | 676s
+[469/510 | 328 min] done    A obs=0.25 d=0 seed=3 | R=  89.8 goal=0.89 concede=0.00 | 615s
+[470/510 | 329 min] done    A obs=0.25 d=0 seed=0 | R=  90.2 goal=0.89 concede=0.00 | 701s
+[471/510 | 329 min] done    A obs=0.25 d=0 seed=1 | R=  91.7 goal=0.91 concede=0.00 | 667s
+[472/510 | 329 min] done  Finf obs=1.0 d=0 seed=4 | R=  80.3 goal=0.79 concede=0.00 | 761s
+[473/510 | 329 min] done    A obs=0.25 d=0 seed=4 | R=  91.2 goal=0.90 concede=0.00 | 627s
+[474/510 | 329 min] done    A obs=0.25 d=0 seed=2 | R=  94.2 goal=0.93 concede=0.00 | 699s
+[475/510 | 330 min] done    A obs=0.25 d=0 seed=5 | R=  90.4 goal=0.89 concede=0.00 | 681s
+[476/510 | 330 min] done    A obs=0.25 d=0 seed=6 | R=  91.6 goal=0.90 concede=0.00 | 675s
+[477/510 | 330 min] done  Finf obs=1.0 d=0 seed=8 | R=  40.7 goal=0.39 concede=0.00 | 842s
+[478/510 | 330 min] done    A obs=0.25 d=0 seed=8 | R=  90.0 goal=0.89 concede=0.00 | 609s
+[479/510 | 331 min] done    A obs=0.25 d=0 seed=7 | R=  98.7 goal=0.97 concede=0.00 | 627s
+[480/510 | 331 min] done    A obs=0.25 d=0 seed=9 | R=  97.0 goal=0.95 concede=0.00 | 656s
+[481/510 | 340 min] done    B obs=0.25 d=0 seed=0 | R=  85.5 goal=0.84 concede=0.00 | 925s
+[482/510 | 340 min] done  Rinf obs=0.25 d=0 seed=2 | R=  85.6 goal=0.84 concede=0.00 | 696s
+[483/510 | 341 min] done  Rinf obs=0.25 d=0 seed=3 | R=  93.8 goal=0.93 concede=0.00 | 690s
+[484/510 | 341 min] done  Rinf obs=0.25 d=0 seed=8 | R=  87.3 goal=0.86 concede=0.00 | 632s
+[485/510 | 341 min] done  Rinf obs=0.25 d=0 seed=7 | R=  81.9 goal=0.81 concede=0.00 | 654s
+[486/510 | 342 min] done    B obs=0.25 d=0 seed=2 | R=  95.4 goal=0.94 concede=0.00 | 909s
+[487/510 | 342 min] done  Rinf obs=0.25 d=0 seed=1 | R=  86.7 goal=0.85 concede=0.01 | 809s
+[488/510 | 342 min] done  Rinf obs=0.25 d=0 seed=0 | R=  34.3 goal=0.33 concede=0.01 | 822s
+[489/510 | 343 min] done  Rinf obs=0.25 d=0 seed=4 | R=  91.9 goal=0.91 concede=0.00 | 759s
+[490/510 | 343 min] done  Rinf obs=0.25 d=0 seed=6 | R=  89.7 goal=0.89 concede=0.00 | 739s
+[491/510 | 343 min] done    B obs=0.25 d=0 seed=1 | R=  93.4 goal=0.92 concede=0.00 | 1025s
+[492/510 | 344 min] done    B obs=0.25 d=0 seed=3 | R=  81.8 goal=0.81 concede=0.00 | 984s
+[493/510 | 344 min] done    B obs=0.25 d=0 seed=5 | R=  93.4 goal=0.92 concede=0.00 | 970s
+[494/510 | 344 min] done  Rinf obs=0.25 d=0 seed=9 | R=  83.8 goal=0.82 concede=0.00 | 750s
+[495/510 | 344 min] done    B obs=0.25 d=0 seed=4 | R=  76.1 goal=0.74 concede=0.00 | 985s
+[496/510 | 344 min] done    B obs=0.25 d=0 seed=7 | R=  90.9 goal=0.90 concede=0.00 | 972s
+[497/510 | 344 min] done  Rinf obs=0.25 d=0 seed=5 | R=  39.4 goal=0.37 concede=0.01 | 846s
+[498/510 | 344 min] done    B obs=0.25 d=0 seed=8 | R=  90.7 goal=0.90 concede=0.00 | 953s
+[499/510 | 345 min] done    B obs=0.25 d=0 seed=6 | R=  96.4 goal=0.95 concede=0.00 | 1005s
+[500/510 | 347 min] done    B obs=0.25 d=0 seed=9 | R=  88.1 goal=0.86 concede=0.00 | 1079s
+[501/510 | 348 min] done  Finf obs=0.25 d=0 seed=0 | R=  89.6 goal=0.88 concede=0.00 | 508s
+[502/510 | 349 min] done  Finf obs=0.25 d=0 seed=2 | R=  92.0 goal=0.91 concede=0.00 | 489s
+[503/510 | 350 min] done  Finf obs=0.25 d=0 seed=1 | R=  82.7 goal=0.81 concede=0.00 | 553s
+[504/510 | 350 min] done  Finf obs=0.25 d=0 seed=3 | R=  51.5 goal=0.49 concede=0.00 | 518s
+[505/510 | 350 min] done  Finf obs=0.25 d=0 seed=5 | R=  78.1 goal=0.77 concede=0.00 | 472s
+[506/510 | 350 min] done  Finf obs=0.25 d=0 seed=6 | R=  91.9 goal=0.91 concede=0.00 | 459s
+[507/510 | 350 min] done  Finf obs=0.25 d=0 seed=8 | R=  96.9 goal=0.95 concede=0.00 | 443s
+[508/510 | 350 min] done  Finf obs=0.25 d=0 seed=7 | R=  80.0 goal=0.79 concede=0.00 | 484s
+[509/510 | 351 min] done  Finf obs=0.25 d=0 seed=4 | R=  26.1 goal=0.24 concede=0.00 | 555s
+[510/510 | 351 min] done  Finf obs=0.25 d=0 seed=9 | R=  21.4 goal=0.20 concede=0.00 | 503s
+
+=== FINAL GREEDY EVALUATION (mean over seeds, 95% CI) ===
+  obs delay  set  n |          return |  goal  conc     GD  epLen |   msgs roleSep | silDrop |     vsA      p |            AUC      p
+-------------------------------------------------------------------------------------------------------------------------------------
+  1.0     0    A 10 |   84.4 +/-  10.7 |  0.83  0.00   0.83   50.8 |    0.0   0.122 |     nan |     nan    nan |  48.4 +/-   9.4    nan
+  1.0     0    B 10 |   81.3 +/-  13.0 |  0.80  0.00   0.80   51.3 |   20.6   0.113 |    61.8 |    -3.2  0.677 |  35.8 +/-   7.8  0.031
+  1.0     0 Rinf 10 |   76.3 +/-   9.6 |  0.74  0.00   0.74   54.1 |  108.1   0.097 |    74.4 |    -8.1  0.218 |  41.9 +/-   7.1  0.227
+  1.0     0 Finf 10 |   76.3 +/-   9.6 |  0.74  0.00   0.74   54.1 |  108.1   0.097 |    74.4 |    -8.1  0.218 |  41.9 +/-   7.1  0.227
+ 0.25     0    A 10 |   92.5 +/-   2.2 |  0.91  0.00   0.91   47.2 |    0.0   0.081 |     nan |     nan    nan |  56.2 +/-   3.9    nan
+ 0.25     0    B 10 |   89.2 +/-   4.6 |  0.88  0.00   0.88   51.3 |   21.0   0.093 |    54.1 |    -3.3  0.169 |  38.0 +/-   4.8  0.000
+ 0.25     0 Rinf 10 |   77.4 +/-  15.5 |  0.76  0.00   0.76   54.5 |   96.3   0.089 |    72.5 |   -15.0  0.057 |  40.6 +/-  11.2  0.013
+ 0.25     0 Finf 10 |   71.0 +/-  20.0 |  0.69  0.00   0.69   55.5 |  110.9   0.098 |    69.4 |   -21.4  0.039 |  39.2 +/-  13.0  0.017
+ 0.15     0    A 10 |   84.8 +/-   8.0 |  0.83  0.00   0.83   51.1 |    0.0   0.065 |     nan |     nan    nan |  46.2 +/-   7.8    nan
+ 0.15     0   D2 10 |   69.5 +/-   9.6 |  0.67  0.00   0.67   59.5 |    3.6   0.070 |     8.9 |   -15.3  0.013 |  32.1 +/-   6.6  0.006
+ 0.15     0   D5 10 |   67.0 +/-  12.6 |  0.65  0.00   0.65   58.8 |    7.7   0.082 |    24.4 |   -17.8  0.016 |  31.2 +/-   5.4  0.002
+ 0.15     0  D10 10 |   60.3 +/-  10.5 |  0.58  0.00   0.58   60.8 |   13.8   0.093 |    40.3 |   -24.5  0.001 |  27.8 +/-   4.9  0.000
+ 0.15     0    D 10 |   72.0 +/-  15.3 |  0.70  0.00   0.70   55.6 |   16.8   0.103 |    33.6 |   -12.7  0.119 |  34.0 +/-   9.2  0.034
+ 0.15     0    C 10 |   55.3 +/-  25.4 |  0.53  0.00   0.53   61.2 |   11.2   0.108 |    30.4 |   -29.5  0.030 |  26.0 +/-  12.0  0.006
+ 0.15     0    B 10 |   75.3 +/-  10.9 |  0.73  0.00   0.73   54.5 |   23.7   0.096 |    44.5 |    -9.5  0.131 |  33.2 +/-   7.6  0.014
+ 0.15     0   R2 10 |   71.6 +/-  13.8 |  0.70  0.00   0.70   55.9 |    4.0   0.067 |    57.9 |   -13.1  0.084 |  37.1 +/-   8.3  0.086
+ 0.15     0   R5 10 |   76.8 +/-   6.1 |  0.75  0.00   0.75   54.4 |    9.9   0.070 |    61.3 |    -8.0  0.091 |  40.8 +/-   4.7  0.193
+ 0.15     0  R10 10 |   75.6 +/-  13.1 |  0.74  0.00   0.74   54.9 |   19.8   0.089 |    57.0 |    -9.2  0.196 |  37.9 +/-   7.0  0.088
+ 0.15     0  R20 10 |   68.1 +/-  15.1 |  0.66  0.00   0.66   57.0 |   37.9   0.107 |    46.6 |   -16.7  0.045 |  33.9 +/-   8.0  0.022
+ 0.15     0 Rinf 10 |   85.3 +/-   7.4 |  0.84  0.00   0.84   48.9 |   57.4   0.119 |    70.3 |     0.5  0.918 |  43.0 +/-   4.3  0.429
+ 0.15     0   F2 10 |   84.6 +/-   4.1 |  0.83  0.00   0.83   49.9 |    1.7   0.066 |    -0.6 |    -0.1  0.974 |  46.7 +/-   5.2  0.910
+ 0.15     0   F5 10 |   73.8 +/-  11.1 |  0.72  0.00   0.72   56.9 |    6.4   0.076 |    20.2 |   -11.0  0.089 |  36.9 +/-   6.7  0.056
+ 0.15     0  F10 10 |   74.4 +/-  10.6 |  0.72  0.00   0.72   56.1 |   13.4   0.099 |    67.5 |   -10.4  0.094 |  35.0 +/-   8.1  0.036
+ 0.15     0  F20 10 |   82.8 +/-   9.3 |  0.81  0.00   0.81   50.8 |   24.8   0.099 |    78.6 |    -2.0  0.719 |  39.3 +/-   6.4  0.136
+ 0.15     0 Finf 10 |   81.1 +/-   7.4 |  0.79  0.00   0.79   50.1 |  100.2   0.097 |    79.4 |    -3.6  0.459 |  41.7 +/-   4.8  0.278
+ 0.15     1    B 10 |   65.7 +/-  18.1 |  0.64  0.00   0.64   57.9 |   22.4   0.097 |    39.8 |   -19.0  0.050 |  30.5 +/-   7.8  0.005
+ 0.15     1 Rinf 10 |   63.8 +/-  20.9 |  0.62  0.00   0.62   57.7 |   75.2   0.107 |    55.4 |   -21.0  0.056 |  32.3 +/-  11.9  0.042
+ 0.15     1 Finf 10 |   82.0 +/-  11.9 |  0.80  0.00   0.80   51.1 |  102.1   0.102 |    80.4 |    -2.8  0.663 |  43.7 +/-  10.4  0.663
+ 0.15     2    B 10 |   64.7 +/-  19.5 |  0.63  0.00   0.63   58.6 |   25.4   0.110 |    34.7 |   -20.0  0.053 |  28.4 +/-   8.3  0.002
+ 0.15     2 Rinf 10 |   70.7 +/-  16.2 |  0.69  0.00   0.69   55.7 |   70.8   0.110 |    60.2 |   -14.1  0.101 |  32.3 +/-   8.8  0.015
+ 0.15     2 Finf 10 |   71.8 +/-  18.3 |  0.70  0.00   0.70   54.7 |  109.4   0.102 |    69.8 |   -13.0  0.167 |  36.8 +/-  10.6  0.124
+ 0.15     5    B 10 |   73.2 +/-   9.6 |  0.71  0.00   0.71   53.9 |   18.8   0.090 |    23.4 |   -11.5  0.053 |  32.7 +/-   6.9  0.009
+ 0.15     5 Rinf 10 |   73.1 +/-  12.0 |  0.71  0.00   0.71   54.0 |   69.4   0.105 |    61.4 |   -11.7  0.088 |  35.8 +/-   7.7  0.046
+ 0.15     5 Finf 10 |   67.5 +/-  10.7 |  0.66  0.00   0.66   58.3 |  116.7   0.092 |    65.2 |   -17.3  0.010 |  31.8 +/-   7.2  0.006
+  0.1     0    A 10 |   66.6 +/-   9.9 |  0.64  0.00   0.64   58.4 |    0.0   0.071 |     nan |     nan    nan |  36.8 +/-   5.5    nan
+  0.1     0   D2 10 |   50.6 +/-   8.2 |  0.48  0.00   0.47   64.5 |    3.3   0.087 |     9.9 |   -16.0  0.012 |  24.0 +/-   4.0  0.001
+  0.1     0   D5 10 |   60.2 +/-   6.4 |  0.58  0.00   0.58   60.4 |    6.9   0.103 |    25.4 |    -6.4  0.236 |  28.5 +/-   2.9  0.009
+  0.1     0  D10 10 |   65.7 +/-   6.1 |  0.63  0.00   0.63   58.2 |   11.2   0.100 |    39.1 |    -0.9  0.862 |  29.7 +/-   4.1  0.032
+  0.1     0    D 10 |   67.1 +/-  12.1 |  0.65  0.00   0.65   57.2 |   16.2   0.108 |    38.7 |     0.5  0.946 |  32.8 +/-   7.5  0.344
+  0.1     0    C 10 |   37.4 +/-  14.8 |  0.35  0.00   0.35   68.4 |    9.3   0.119 |    19.9 |   -29.2  0.002 |  17.8 +/-   7.4  0.000
+  0.1     0    B 10 |   74.3 +/-  10.2 |  0.72  0.00   0.72   55.1 |   21.5   0.111 |    44.7 |     7.7  0.236 |  33.2 +/-   8.6  0.438
+  0.1     0   R2 10 |   65.8 +/-  16.5 |  0.63  0.00   0.63   57.3 |    3.8   0.085 |    49.4 |    -0.8  0.924 |  34.6 +/-   9.3  0.653
+  0.1     0   R5 10 |   61.9 +/-   7.4 |  0.59  0.00   0.59   60.3 |    9.6   0.086 |    48.3 |    -4.7  0.401 |  32.3 +/-   4.8  0.184
+  0.1     0  R10 10 |   56.8 +/-  16.2 |  0.54  0.00   0.54   59.5 |   18.8   0.103 |    41.7 |    -9.8  0.260 |  26.8 +/-   7.1  0.023
+  0.1     0  R20 10 |   63.1 +/-  13.9 |  0.61  0.00   0.61   57.0 |   31.7   0.133 |    47.8 |    -3.5  0.647 |  31.0 +/-   7.8  0.189
+  0.1     0 Rinf 10 |   70.9 +/-  15.6 |  0.69  0.00   0.69   54.9 |   49.6   0.114 |    63.2 |     4.3  0.605 |  31.6 +/-   6.1  0.176
+  0.1     0   F2 10 |   64.8 +/-   7.2 |  0.62  0.00   0.62   57.0 |    2.2   0.075 |    -1.4 |    -1.8  0.746 |  33.3 +/-   4.1  0.266
+  0.1     0   F5 10 |   51.7 +/-  10.8 |  0.49  0.00   0.49   64.7 |    7.6   0.080 |    15.8 |   -14.9  0.033 |  25.1 +/-   5.2  0.003
+  0.1     0  F10 10 |   43.8 +/-  16.9 |  0.41  0.00   0.41   67.0 |   16.4   0.107 |    39.7 |   -22.7  0.020 |  21.3 +/-   7.5  0.002
+  0.1     0  F20 10 |   64.1 +/-  13.4 |  0.62  0.00   0.62   57.0 |   28.0   0.110 |    62.0 |    -2.5  0.737 |  28.9 +/-   8.5  0.098
+  0.1     0 Finf 10 |   72.6 +/-  13.7 |  0.70  0.00   0.70   53.0 |  106.1   0.106 |    71.9 |     6.0  0.430 |  36.3 +/-   8.7  0.911
+
+Saved checkpoints/sweep_v3\summary.csv
+Saved checkpoints/sweep_v3\results.png
+Saved figures to checkpoints/sweep_v3\figures and tables to checkpoints/sweep_v3\results.md

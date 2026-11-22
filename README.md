@@ -64,11 +64,34 @@ counterfactual rollouts, a difference reward that uses only the team reward.
 
 ## Results
 
-*The main sweep is still running; figures and tables will be added here when it finishes.*
+Main sweep: 580 runs (58 configurations × 10 seeds) at ρ = 0.06, in the regime chosen by a
+pre-registered pilot. Goal rate on 200 unseen episodes, median over seeds:
 
-The pilot (3 seeds, results in [checkpoints/pilot_v6/pilot.md](checkpoints/pilot_v6/pilot.md)) chose the
-regime: single-goal episodes at ρ = 0.06, where a team without messages scores 26% and a team that
-broadcasts every step scores 71%.
+| Team | Goals % | Messages / agent / episode |
+| :--- | :--- | :--- |
+| No communication (`A`) | 12.8 | 0 |
+| Rule sender, unlimited (`Rinf`) | 22.2 | 1.3 |
+| Hand-coded team (no learning) | 42.5 | 0 |
+| **Learned sender, unlimited (`Linf`)** | **46.0** | **4.3** |
+| Fixed broadcast, every step (`Finf`) | 77.5 | 50.7 |
+
+**Observations:**
+* **RQ1:** the learned sender saturates at an allowance of about 22 messages (B90 = 21.7, 95% CI
+  16.5–29.3) but only ever sends about 4 per episode. The rule saturates at one message, but low. The
+  fixed broadcast keeps improving up to every step: it also reports the sender's position, which the
+  event-triggered senders never share.
+* **RQ2:** a one-step delay is harmless; eight steps cut the learned sender's gain by two thirds, but it
+  still scores twice as often as the silent team.
+* **RQ3:** the gain from communication grows steadily as the view shrinks: about 0 points at ρ ≥ 0.15,
+  +18 at ρ = 0.075 and +33 at ρ = 0.06.
+
+![Goal rate against the message budget](checkpoints/sweep_v5/figures/rq1_budget.png)
+
+![Goal rate against the view radius](checkpoints/sweep_v5/figures/rq3_observability.png)
+
+Full tables: [checkpoints/sweep_v5/results.md](checkpoints/sweep_v5/results.md). The 1,213 development
+runs before the main sweep, and why early versions showed no benefit from communication, are described
+in the report.
 
 ---
 

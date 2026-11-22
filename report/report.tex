@@ -349,27 +349,27 @@ delays $\delta\in\{1,2,4,8\}$ for \cfg{Linf}, \cfg{Rinf} & RQ2 \\
 \caption{Development iterations. A run is one team trained in one configuration with one seed; every run's
 training history is in the repository.}
 \label{tab:history}
-\begin{tabularx}{\textwidth}{@{}l l r >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X@{}}
+\begin{tabularx}{\textwidth}{@{}l r >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X@{}}
 \toprule
-Ver. & Dates & Runs & What changed & What we saw \\
+Ver. & Runs & What changed & What we saw \\
 \midrule
-v0 & Oct 19--Nov 3 & 114 & Proposal design: four message tokens, scripted keeper, 200-step episodes; sanity
+v0 & 114 & Proposal design: four message tokens, scripted keeper, 200-step episodes; sanity
 runs, first sweep over $\rho\in\{1,0.75,0.5,0.25\}$ & DQN learns to score, but \cfg{A} already scores
 92--95\% at $\rho\ge0.25$: one agent can score alone \\
-v1 & Nov 4 & 105 & Assisted goals; keeper removed; views down to $\rho=0.15$ and $0.1$ &
+v1 & 105 & Assisted goals; keeper removed; views down to $\rho=0.15$ and $0.1$ &
 Unlimited learned sender $+5.6$\,pp (n.s.); budgeted learned senders 11--18\,pp \emph{below} \cfg{A} \\
-v2 & Nov 8--9 & 49 & Event-triggered learned sender; fixed-schedule baselines; best-snapshot selection
+v2 & 49 & Event-triggered learned sender; fixed-schedule baselines; best-snapshot selection
 & Learned budgets still 11--47\,pp below \cfg{A} \\
-v3 & Nov 9--11 & 568 & 80-step episodes; rule senders; send/silent gate with value-of-information
+v3 & 568 & 80-step episodes; rule senders; send/silent gate with value-of-information
 credit; rule handover; 10 seeds & No sender beats \cfg{A}; learned budget 10 is $-24.8$\,pp
 ($p=0.001$); the gain grows as the view shrinks \\
-v4 & Nov 10--12 & 305 & Memory of last sightings; 10k episodes; medians and Mann--Whitney tests;
+v4 & 305 & Memory of last sightings; 10k episodes; medians and Mann--Whitney tests;
 regime pilot & \cfg{A} scores 91--97\% at $\rho\ge0.1$ (ceiling); seeds collapse mid-training; at
 $\rho=0.05$ nothing learns \\
-v5 & Nov 18--20 & 72 & Code review fixes; rollout credit; pre-registered pilot & The gap opens: 26\% vs.\
+v5 & 72 & Code review fixes; rollout credit; pre-registered pilot & The gap opens: 26\% vs.\
 71\% at $\rho=0.06$ \\
 \midrule
-Main & Nov 19--22 & 580 & Regime fixed by the pilot; 10 seeds & Section~\ref{sec:results} \\
+Main & 580 & Regime fixed by the pilot; 10 seeds & Section~\ref{sec:results} \\
 \bottomrule
 \end{tabularx}
 \end{table*}

@@ -10,6 +10,7 @@
                headheight=14pt,headsep=16pt,footskip=26pt}%
   \setlength{\columnsep}{0.25in}%
 }
+\raggedbottom   % arxiv.sty uses \flushbottom, which stretches gaps in two columns
 
 % ------------------------------------------------------------------ packages
 \usepackage[utf8]{inputenc}
@@ -21,12 +22,14 @@
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{tabularx}
+\usepackage{array}
 \usepackage{xcolor}
 \usepackage[font=small,labelfont=bf,skip=4pt]{caption}
 \usepackage{enumitem}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{tikz}
+\usepackage{placeins}
 \usepackage[numbers,sort&compress]{natbib}
 \usepackage[hidelinks]{hyperref}
 \usepackage{url}
@@ -34,6 +37,8 @@
 \setlist{nosep,leftmargin=1.2em}
 \setlength{\textfloatsep}{10pt plus 2pt minus 2pt}
 \setlength{\dbltextfloatsep}{10pt plus 2pt minus 2pt}
+\setlength{\floatsep}{8pt plus 2pt minus 2pt}
+\renewcommand{\arraystretch}{1.1}
 
 % ------------------------------------------------------------------ macros
 \newcommand{\R}{\mathbb{R}}
@@ -49,7 +54,7 @@
     \includegraphics[width=#1]{figures/#2}%
   }{%
     \fbox{\parbox[c][#3][c]{\dimexpr#1-2\fboxsep-2\fboxrule}{\centering\small\textcolor{gray}{%
-      Figure pending: \texttt{figures/\detokenize{#2}}}}}%
+      Figure pending (main sweep): \texttt{figures/\detokenize{#2}}}}}%
   }%
 }
 
@@ -79,7 +84,7 @@
 
 \twocolumn[{%
 \maketitle
-\vspace{-0.35in}
+\vspace{-0.4in}
 \begin{abstract}
 Cooperating agents rarely have free communication: bandwidth is limited and every message costs
 energy. We ask how much communication two reinforcement-learning teammates actually need. In a 2D
@@ -87,15 +92,16 @@ soccer task inspired by Rocket League, two independent Double-DQN agents see onl
 themselves, a goal counts only if the teammate assisted it, and each agent may send a limited number
 of messages per episode carrying what it currently sees. Comparing a fixed broadcast schedule, a
 hand-coded rule and a learned sender, which decides when to send using counterfactual rollouts of the
-game, we separate the value of the information from the skill of choosing when to share it. The design
-was reached over 1\,213 development runs. Our early versions showed no benefit from communication, and
-we traced this to a hidden free channel and a flawed credit signal. A pre-registered pilot then fixed
-the regime for a main sweep of 580 runs over the message budget, delay and view radius, from which we
-estimate the budget at which communication saturates.
+game, we separate the value of the information from the skill of choosing when to share it. Getting
+there took six versions of the environment and learner and 1\,213 training runs. For most of them
+communication showed no benefit, which we traced to a hidden free channel, a flawed credit signal and
+a task that was too easy. A pre-registered pilot then fixed the regime for a main sweep of 580 runs
+over the message budget, delay and view radius, from which we estimate the budget at which
+communication saturates.
 \end{abstract}
 \keywords{multi-agent reinforcement learning \and communication budgets \and partial observability
 \and independent Q-learning \and difference rewards}
-\vspace{0.25in}
+\vspace{0.2in}
 }]
 
 % =====================================================================
@@ -110,8 +116,8 @@ practical question: \emph{how much} must they say? If a team keeps most of its p
 handful of messages, an engineer can budget bandwidth accordingly.
 
 We study this in a deliberately simple setting. Two agents play a 2D soccer task where neither can
-see far, so each depends on the other to find the ball. Every message is useful information, but
-messages are rationed. Three questions guide the study:
+see far, so each depends on the other to find the ball. Messages are useful but rationed. Three
+questions guide the study:
 \begin{itemize}
 \item \textbf{RQ1 (saturation).} As the per-episode budget $B$ grows from $0$ to $\infty$, where does
 the team stop improving?
@@ -119,20 +125,19 @@ the team stop improving?
 \item \textbf{RQ3 (observability).} Does communication matter more when agents see less?
 \end{itemize}
 
-Our contributions are: (i) a lightweight environment where communication provably carries
-decision-relevant information; (ii) a learned sender that is credited by \emph{counterfactual
-rollouts}, which directly price each message against the budget it uses up; (iii) a comparison of
-learned, rule-based and fixed-schedule senders that separates what a message says from when it is
-sent; and (iv) a pre-registered protocol and a record of what failed along the way.
+Our contributions are: (i) an environment in which messages carry decision-relevant information that
+cannot leak through any other channel; (ii) a learned sender credited by \emph{counterfactual
+rollouts}, which price each message against the budget it uses up; (iii) a comparison of learned,
+rule-based and fixed-schedule senders that separates what a message says from when it is sent; and
+(iv) a record of six design iterations, including the failures, followed by a pre-registered pilot.
 
 % =====================================================================
 \section{Background}
 % =====================================================================
 
 \textbf{Dec-POMDP with a channel.} $n=2$ agents act on local observations $o^i_t$ and share a reward
-$r_t$~\citep{oliehoek2016}. In addition to its action $a^i_t$, agent $i$ may send a message, which the
-teammate receives at step $t+\delta$. The budget $B$ caps the messages each agent sends per episode,
-so the team solves
+$r_t$~\citep{oliehoek2016}. Besides its action $a^i_t$, agent $i$ may send a message, which the
+teammate receives at step $t+\delta$. The budget $B$ caps the messages each agent sends per episode:
 \begin{equation}
 \max_{\pi^1,\pi^2}\ \E\Big[\sum_{t=0}^{T}\gamma^t r_t\Big]
 \ \ \text{s.t.}\ \ \sum_{t=0}^{T}\ind[m^i_t\neq\varnothing]\le B\ \ \forall i.
@@ -146,70 +151,73 @@ y_t=\sum_{k=0}^{n-1}\gamma^k r_{t+k}+\gamma^n Q_{\bar\theta}\big(o_{t+n},\textst
 \label{eq:ddqn}
 \end{equation}
 IQL has no convergence guarantee, because the teammate keeps changing, but it is the simplest fully
-decentralised baseline. Centralised methods such as QMIX~\citep{rashid2018} are left for future work.
+decentralised baseline; centralised methods such as QMIX~\citep{rashid2018} are left for future work.
 
 \textbf{Difference rewards.} The credit for one agent's choice can be measured as the change in
-team return when only that choice is changed~\citep{wolpert2002}. We use this idea to judge
-whether a message was worth sending.
+team return when only that choice is changed~\citep{wolpert2002}. We use this to judge whether a
+message was worth sending.
 
 % =====================================================================
 \section{Environment}\label{sec:env}
 % =====================================================================
 
-\begin{figure}[t]
+\begin{figure}[!t]
 \centering
-\begin{tikzpicture}[scale=0.15]
-  \fill[green!7] (0,0) rectangle (20,30);
+\begin{tikzpicture}[scale=0.2,font=\footnotesize]
+  % field
+  \fill[green!6] (0,0) rectangle (20,30);
   \draw[thick] (0,0) rectangle (20,30);
   \draw[dashed,gray] (0,15) -- (20,15);
-  \fill[orange!18] (3,12) rectangle (17,18);
-  \node[font=\tiny,orange!60!black] at (10,12.9) {ball spawn band};
-  \draw[line width=2.5pt,red!70!black] (6,30) -- (14,30);
-  \node[font=\scriptsize,above] at (10,30.2) {goal};
-  \draw[blue!60,fill=blue!10] (6,10) circle (2.16);
-  \fill[blue!70!black] (6,10) circle (0.5);
-  \node[font=\scriptsize] at (6,6.6) {agent 1};
-  \draw[blue!60,fill=blue!10] (14,7) circle (2.16);
-  \fill[blue!70!black] (14,7) circle (0.5);
-  \node[font=\scriptsize] at (14,3.6) {agent 2};
-  \fill[black] (9,16) circle (0.4);
-  \node[font=\scriptsize,right] at (9.5,16.4) {ball};
-  \draw[->,thick,purple] (7.4,9.5) to[bend right=15] node[midway,below,font=\tiny] {message} (13.3,7.5);
+  \fill[orange!20] (3,12) rectangle (17,18);
+  \draw[line width=3pt,red!70!black] (6,30) -- (14,30);
+  % agents and view circles (radius rho*D = 2.16)
+  \draw[blue!60,fill=blue!10] (5,8) circle (2.16);
+  \fill[blue!70!black] (5,8) circle (0.5);
+  \node[below] at (5,5.8) {agent 1};
+  \draw[blue!60,fill=blue!10] (15,6) circle (2.16);
+  \fill[blue!70!black] (15,6) circle (0.5);
+  \node[below] at (15,3.8) {agent 2};
+  \fill (9,16) circle (0.4);
+  \node[above] at (9,16.3) {ball};
+  \draw[->,thick,purple] (7.3,8.2) to[bend left=15] (12.7,6.6);
+  \node[purple] at (10,10) {message};
+  % annotations to the right
+  \draw[gray] (14,30) -- (22,30) node[right,black,align=left] {goal (width 8):\\assisted goals only};
+  \draw[gray] (17,15) -- (22,15) node[right,black,align=left] {ball spawn band};
+  \draw[gray] (17.16,6) -- (22,6) node[right,black,align=left] {view radius $\rho D$\\($2.2$ at $\rho=0.06$)};
+  \node[right,align=left] at (22,22) {field $20\times30$\\80-step episodes};
 \end{tikzpicture}
-\caption{The field to scale ($20\times30$, main regime $\rho=0.06$). Each agent sees the ball and its
-teammate only inside its circle. A message carries the sender's view of the ball, its position and
-its last touch.}
+\caption{The environment to scale in the main regime. Each agent sees the ball and its teammate only
+inside its circle. A message carries the sender's view of the ball, its position and its last touch.}
 \label{fig:env}
 \end{figure}
 
 We built a small Gymnasium environment (Fig.~\ref{fig:env}). Two agents start in their own half and
 the ball somewhere in midfield; the team attacks the goal at the top. Agents move in four directions,
 boost forward or wait, and the ball can be dribbled. An episode lasts 80 steps and ends at the first
-goal. Three design choices make communication matter:
+goal. Three design choices, each the outcome of an experiment in Section~\ref{sec:history}, make
+communication matter:
 
 \textbf{Assisted goals.} A goal counts only if the scorer's teammate touched the ball in the last 40
-steps. Without this rule, one agent could score alone and its teammate's information would be
-worthless.
+steps. Without this rule, one agent could score alone.
 
 \textbf{Short sight.} An agent sees the ball or its teammate only within $\rho D$ of itself, where
-$D$ is the field diagonal. In the main regime ($\rho=0.06$) this is 2.2 units, much less than one
-kick, so most of the time neither agent knows where the ball is. Each agent keeps a memory of where it
-last saw (or was told) the ball and its teammate were.
+$D$ is the field diagonal. At $\rho=0.06$ this is 2.2 units, much less than one kick, so most of the
+time neither agent knows where the ball is. Each agent remembers where it last saw, or was told, the
+ball and its teammate were.
 
 \textbf{Messages with content.} A message reports what the sender sees: the ball's position and
 velocity, the sender's own position and when it last touched the ball. It arrives after $\delta$
-steps and stays visible for 10. Each agent also observes how many messages it and its teammate have
+steps and stays visible for 10. Agents also observe how many messages they and their teammate have
 left.
 
-\textbf{Reward.} The team earns $+100$ per assisted goal. To speed up learning we add a small bonus
-for being near the ball and two potential-based terms~\citep{ng1999}, which leave the optimal policy
-unchanged:
+\textbf{Reward.} The team earns $+100$ per assisted goal, a small bonus for being near the ball and
+two potential-based terms~\citep{ng1999}, which leave the optimal policy unchanged:
 \begin{equation}
 F_t=\Phi(s_{t+1})-\Phi(s_t)+\gamma\Psi(s_{t+1})-\Psi(s_t),
 \end{equation}
 where $\Phi$ rewards moving the ball toward the goal and the nearest agent toward the ball, and
-$\Psi=20$ while a pass would make the next goal count. We always report goals, never the shaped
-return.
+$\Psi=20$ while a pass would make the next goal count. We always report goals, never shaped return.
 
 % =====================================================================
 \section{Method}\label{sec:method}
@@ -218,23 +226,24 @@ return.
 \subsection{Learners}
 
 Each agent is an independent Double DQN (Eq.~\ref{eq:ddqn}) on a 45-dimensional observation, written in
-NumPy with hand-coded backpropagation. For networks this small, it trains several times faster on a
-CPU than a deep-learning framework. Execution is fully decentralised: each agent acts and sends using
-only its own observation. Table~\ref{tab:hparams} lists the settings.
+NumPy with hand-coded backpropagation; for networks this small it trains several times faster on a
+CPU than a deep-learning framework. Execution is fully decentralised. Table~\ref{tab:hparams} lists the
+settings.
 
-\begin{table}[t]
+\begin{table}[!t]
 \centering\small
 \caption{Environment and training settings (main regime).}
 \label{tab:hparams}
-\begin{tabularx}{\linewidth}{@{}lX@{}}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.27\linewidth}X@{}}
 \toprule
-Episode & 80 steps, ends at first goal \\
+Episode & 80 steps, ends at the first goal \\
 View radius & $\rho=0.06$ of the diagonal (2.2 units) \\
-Q-network & MLP 128--128, Double DQN, 3-step returns, $\gamma=0.99$ \\
-Optimisation & Adam $5\cdot10^{-4}$, batch 64, buffer $10^5$, Polyak $\tau=0.005$ \\
-Exploration & $\epsilon$: 1 $\to$ 0.05 over the first 10\% of episodes \\
-Message gate & MLP 64--64, cost $c=0.05$, rollout horizon $H=40$ \\
-Training & 15\,000 episodes, best of 60 validation snapshots \\
+Q-network & MLP 128--128, 3-step returns, $\gamma=0.99$ \\
+Optimiser & Adam, lr $5\cdot10^{-4}$, batch 64 \\
+Replay, target & buffer $10^5$, Polyak $\tau=0.005$ \\
+Exploration & $\epsilon$ from 1 to 0.05 over 10\% of training \\
+Message gate & MLP 64--64, cost $c=0.05$, horizon $H=40$ \\
+Training & 15\,000 episodes, best of 60 snapshots \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -247,7 +256,7 @@ send. Three senders separate the questions:
 \item \cfg{F<B>}, \textbf{fixed schedule}: broadcast every $\lceil T/B\rceil$ steps, whatever the
 sender sees. This measures the value of the information alone.
 \item \cfg{R<B>}, \textbf{rule}: send when the sender sees the ball and its previous message has
-expired. This is a sensible hand-coded trigger.
+expired; a sensible hand-coded trigger.
 \item \cfg{L<B>}, \textbf{learned}: a message gate decides when to spend the budget.
 \end{itemize}
 \cfg{A} denotes no communication. The proposal's settings B, C and D correspond to \cfg{Linf}, a learned
@@ -260,24 +269,24 @@ report. At those moments a small network $g_{\phi_i}$ scores how much a message 
 and the agent sends if the score exceeds a cost $c$.
 
 How should $g$ be trained? A message changes what the \emph{teammate} does, often many steps later,
-so the sender's own reward says little about it. We therefore ask the simulator directly. At up to
-two random decision points per episode, the game is copied twice: in one copy the message is
-delivered, in the other it is withheld. Both copies play on for $H=40$ steps with the current
-policies, and the gate learns the difference in team reward:
+so the sender's own reward says little about it. We therefore ask the simulator. At up to two random
+decision points per episode the game is copied: in one copy the message is delivered, in the other it
+is withheld. Both copies play on for $H=40$ steps with the current policies, and the gate learns the
+difference in team reward:
 \begin{equation}
 A^i(o^i_t)=\sum_{h<H}\gamma^h\big(r^{\text{send}}_{t+h}-r^{\text{silent}}_{t+h}\big).
 \label{eq:rollout}
 \end{equation}
 This is a difference reward computed from the team reward alone. Because the sending copy has one
-message fewer left, the difference also accounts for the budget the message uses up. Copying the
-game is only needed during training (centralised training, decentralised execution). As an ablation
-we keep the proposal's original idea, regressing the Monte-Carlo team return after each decision.
+message fewer left, it also accounts for the budget the message uses up. Copying the game is needed
+only in training (centralised training, decentralised execution). As an ablation we keep the
+proposal's idea of regressing the Monte-Carlo team return after each decision.
 
-One practical detail matters. Early in training a random sender teaches receivers to ignore messages.
-For the first 30\% of training the rule therefore decides in the learned sender's place, with a
-probability that fades from 1 to 0. Algorithm~\ref{alg:train} summarises a run.
+Early in training, a random sender teaches receivers to ignore messages. For the first 30\% of
+training the rule therefore decides in the learned sender's place, with a probability fading from 1
+to 0 (Algorithm~\ref{alg:train}).
 
-\begin{algorithm}[t]
+\begin{algorithm}[!t]
 \caption{Training a team with a learned sender}\label{alg:train}
 \small
 \begin{algorithmic}[1]
@@ -286,10 +295,10 @@ probability that fades from 1 to 0. Algorithm~\ref{alg:train} summarises a run.
     \For{each agent $i$}
       \State $a^i\gets\epsilon$-greedy action from $Q_{\theta_i}$
       \If{$i$ sees the ball and has budget left}
-        \State $m^i\gets\ind[g_{\phi_i}(o^i)>c]$ \Comment{or rule, early on}
+        \State $m^i\gets\ind[g_{\phi_i}(o^i)>c]$ \Comment{rule, early on}
         \If{this decision is sampled}
-          \State copy the game; play on with and
-          \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}without $m^i$; store $(o^i,A^i)$
+          \State copy the game; play on with
+          \Statex \hspace{2.6em}and without $m^i$; store $(o^i,A^i)$
         \EndIf
       \EndIf
     \EndFor
@@ -300,51 +309,169 @@ probability that fades from 1 to 0. Algorithm~\ref{alg:train} summarises a run.
 \end{algorithmic}
 \end{algorithm}
 
-\subsection{Changes from the proposal}
-
-Four things changed, each for a reason we found in experiments. We added assisted goals and removed
-the scripted opponent: with a keeper the task did not learn within our compute, and without assists
-communication had no value. Messages now carry what the sender sees instead of four abstract tokens
-(attack, defend, pass, rotate), which had no grounded meaning. The learned sender is credited by
-rollouts instead of DQN. Finally, the rule and fixed senders were added as reference points.
-
 % =====================================================================
-\section{Experimental Setup}\label{sec:setup}
+\section{How We Got Here}\label{sec:history}
 % =====================================================================
 
-\textbf{A pre-registered pilot.} Many choices, such as the view radius, could be tuned until
-communication looks good. To avoid this, we wrote the decision rules down \emph{before} running a
-72-run pilot on seeds disjoint from the main sweep (Table~\ref{tab:pilot}). The most consequential rule
-picked the regime with the largest relative gap between no communication and an every-step broadcast,
-among regimes where both still learn. That was $\rho=0.06$, where \cfg{A} scores 26\% and \cfg{Finf}
-71\%.
+The design above is the sixth version of the project. Table~\ref{tab:history} summarises the
+1\,213 runs that led to it; every run's training history is in the repository. We describe them
+because the failures explain the final design, and because they are a finding in themselves: the value
+of communication turned out to be easy to hide.
 
-\begin{table}[t]
+\begin{table*}[!t]
 \centering\small
-\caption{Pilot decisions (3 seeds per configuration).}
-\label{tab:pilot}
-\begin{tabularx}{\linewidth}{@{}lXl@{}}
+\caption{Development iterations. Runs counts every trained team (one configuration, one seed).}
+\label{tab:history}
+\begin{tabularx}{\textwidth}{@{}l l r >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X@{}}
 \toprule
-Question & Evidence & Decision \\
+Ver. & Dates & Runs & What changed & What we saw \\
 \midrule
-Share weights? & sharing 6\,pp worse on \cfg{Finf} & independent \\
-Regime & largest eligible gap: 26\% vs.\ 71\% & single goal, $\rho=0.06$ \\
-Gate credit & \cfg{L4}: 69\% (rollout) vs.\ 64\% (team) & rollout \\
-Length & curves flat by 15k episodes & 15\,000 \\
-LR decay & 7\% of runs unstable ($<$10\%) & off \\
+v0 & Oct 19--Nov 3 & 114 & Proposal design: four message tokens, scripted keeper, 200-step episodes; sanity
+runs, first sweep over $\rho\in\{1,0.75,0.5,0.25\}$ & DQN learns to score, but \cfg{A} already scores
+92--95\% at $\rho\ge0.25$: one agent can score alone \\
+v1 & Nov 4 & 105 & Assisted goals; keeper removed; views down to $\rho=0.15$ and $0.1$ &
+Unlimited learned sender $+5.6$\,pp (n.s.); budgeted learned senders 11--18\,pp \emph{below} \cfg{A} \\
+v2 & Nov 8--9 & 49 & Event-triggered learned sender; fixed-schedule baselines; best-snapshot selection
+& Learned budgets still 11--47\,pp below \cfg{A} \\
+v3 & Nov 9--11 & 568 & 80-step episodes; rule senders; send/silent gate with value-of-information
+credit; rule handover; 10 seeds & No sender beats \cfg{A}; learned budget 10 is $-24.8$\,pp
+($p=0.001$); the gain grows as the view shrinks \\
+v4 & Nov 10--12 & 305 & Memory of last sightings; 10k episodes; medians and Mann--Whitney tests;
+regime pilot & \cfg{A} scores 91--97\% at $\rho\ge0.1$ (ceiling); seeds collapse mid-training; at
+$\rho=0.05$ nothing learns \\
+v5 & Nov 18--20 & 72 & Code review fixes; rollout credit; pre-registered pilot & Gap opens: 26\% vs.\
+71\% at $\rho=0.06$ \\
+\midrule
+Main & from Nov 21 & 580 & Regime fixed by the pilot; 10 seeds & Section~\ref{sec:results} \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.9\textwidth]{figures/dev/v3_rq1_budget.png}
+\caption{v3 (510 runs, 10 seeds): goal rate against the message budget (mean and 95\% CI). No sender
+beats no communication (dashed), and the learned sender at small budgets does worse.}
+\label{fig:v3}
+\end{figure*}
+
+\textbf{v0--v2: making communication necessary.} The proposal's design gave the agents four abstract
+tokens (attack, defend, pass, rotate) and a scripted goalkeeper. Sanity runs confirmed that DQN learns
+to score, but the first sweep showed that a single agent could score on its own, so a teammate's
+information was worthless. Against the keeper the task did not learn at all. We removed the keeper and
+added the assist rule, and later made the learned sender event-triggered: it decides only when it sees
+the ball, so every message has something to report. Still, budgeted learned senders scored 11--47
+points \emph{below} the team that never spoke.
+
+\textbf{v3: a large sweep with a negative answer.} Two changes made the task harder: 80-step
+episodes, because with 200 steps nearly every team eventually scored, and a hand-coded rule sender as
+a reference. The learned sender now chose only between sending and staying silent; picking among
+interchangeable tokens had fed the receiver a drifting input. Its credit was the improvement a
+message made to the receiver's own Q-values. Over 510 runs with 10 seeds, no sender beat \cfg{A}
+(Fig.~\ref{fig:v3}). One trend held, however: communication helped more as the view shrank
+(Fig.~\ref{fig:v3rho}). At $\rho=0.1$ all three unlimited senders beat \cfg{A}; at full view all lost.
+This suggested that the effect was real but masked.
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.95\linewidth]{figures/dev/v3_rq3_observability.png}
+\caption{v3: goal rate against the view radius $\rho$. Communication only pays off when agents see
+little ($\rho=0.1$, left).}
+\label{fig:v3rho}
+\end{figure}
+
+\textbf{v4: a ceiling and collapsing seeds.} Agents gained a memory of their last sightings, so a
+message is not forgotten after 10 steps, and training was extended to 10\,000 episodes. With memory,
+however, \cfg{A} scored 91--97\% at every $\rho\ge0.1$, which left no room for messages to help.
+Learning curves also revealed that teams often reached 80--90\% and then collapsed
+(Fig.~\ref{fig:v4}), so a single bad seed could dominate a mean; we switched to medians and
+Mann--Whitney tests. A small regime pilot showed that at $\rho=0.05$ no team learned reliably.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.9\textwidth]{figures/dev/v4_learning_curves.png}
+\caption{v4: validation goal rate during training at $\rho=0.15$ (mean $\pm$ SE, 5 seeds). Teams
+reach 80--90\% and then collapse, which best-snapshot selection hides.}
+\label{fig:v4}
+\end{figure*}
+
+\textbf{v5: the review.} We then reviewed the code against the saved runs and checked each suspected
+flaw on trained policies. Three findings explained the earlier results:
+\begin{itemize}
+\item \textbf{A free channel.} An assist flag in the observation revealed the teammate's true touches to
+every team, including \cfg{A}. Clearing it changed \cfg{A}'s action in 64\% of the steps where it was
+set: the ``silent'' team had been communicating all along.
+\item \textbf{A credit that could not be negative.} The receiver's Q-value change never penalised a
+wasted message and was uncorrelated with a message's effect on the outcome. We replaced it with the
+rollout credit of Section~\ref{sec:gate}.
+\item \textbf{Hidden instability.} 26 of 98 v4 runs ended training below 50\% goals, but only 6 did after
+best-snapshot selection. We now report the final policy as well.
+\end{itemize}
+Smaller fixes followed: the time limit is terminal because the remaining time is observed, messages
+report the sender's view at decision time, and the networks became 5--8$\times$ faster.
+
+\textbf{The pre-registered pilot.} Many choices, the view radius above all, could be tuned until
+communication looks good. To avoid this, we wrote the decision rules down \emph{before} a 72-run pilot
+on seeds disjoint from the main sweep (Table~\ref{tab:pilot}). The regime rule chose the largest
+relative gap between \cfg{A} and an every-step broadcast among regimes where both still learn:
+$\rho=0.06$, at 26\% vs.\ 71\%. At $\rho=0.075$ the gap was already clear (Fig.~\ref{fig:pilot}),
+and the rule sender matched the broadcast's 83\% with only 2 messages per episode instead of 47, a
+first hint that a small budget suffices.
+
+\begin{table}[!t]
+\centering\small
+\caption{Pilot decisions (rules fixed in advance; 3 seeds).}
+\label{tab:pilot}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.22\linewidth}X@{}}
+\toprule
+Question & Decision (evidence) \\
+\midrule
+Share weights & no: sharing 6\,pp worse on \cfg{Finf} \\
+Regime & single goal, $\rho=0.06$: \cfg{A} 26\% vs.\ \cfg{Finf} 71\% \\
+Gate credit & rollout: \cfg{L4} 69\% vs.\ 64\% (team return) \\
+Length & 15\,000 episodes: curves flat by then \\
+LR decay & off: 7\% of runs unstable (rule: $>$10\%) \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\textbf{Main sweep.} Every configuration is trained with 10 seeds (Table~\ref{tab:sweep}), 580 runs in
-total. A run takes 30--40 minutes on one core, so the sweep needs about 300--400 core-hours, roughly
-50 hours of wall-clock time on the machine used.
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\linewidth]{figures/dev/pilot_learning_curves.png}
+\caption{v5 pilot at $\rho=0.075$ (median and IQR, 3 seeds): with the free channel removed,
+communicating teams clearly beat \cfg{A}, which plateaus near 50\%.}
+\label{fig:pilot}
+\end{figure}
 
-\begin{table}[t]
+Relative to the proposal, the iterations thus led to assisted goals and no opponent, messages that
+carry observations rather than abstract tokens, rollout credit instead of DQN for the message
+decision, and the rule and fixed senders as reference points.
+
+% =====================================================================
+\section{Main Experiment}\label{sec:setup}
+% =====================================================================
+
+\begin{figure*}[!t]
+\centering
+\resultfig[0.9\textwidth]{rq1_budget.png}{3.2cm}\\[2pt]
+{\small (a) RQ1: goal rate against the message budget}\\[6pt]
+\resultfig[0.9\textwidth]{rq3_observability.png}{3.2cm}\\[2pt]
+{\small (b) RQ3: goal rate and communication gain against the view radius}
+\caption{Main sweep at $\rho=0.06$, 10 seeds. (a) Learned, rule and fixed senders against the budget
+(median and IQR; dashed: \cfg{A}), with fitted saturation curves. (b) \cfg{A}, \cfg{Linf} and
+\cfg{Rinf} against $\rho$ (left) and the gain $\Delta(\rho)$ with 95\% bootstrap CI (right).}
+\label{fig:main}
+\end{figure*}
+
+Every configuration of the main sweep is trained with 10 seeds in the regime fixed by the pilot
+(Table~\ref{tab:sweep}), 580 runs in total. A run takes 30--40 minutes on one core, so the sweep needs
+about 300--400 core-hours, roughly 50 hours of wall-clock time on the machine used.
+
+\begin{table}[!t]
 \centering\small
 \caption{Main sweep: 58 configurations $\times$ 10 seeds.}
 \label{tab:sweep}
-\begin{tabularx}{\linewidth}{@{}lXl@{}}
+\begin{tabularx}{\linewidth}{@{}c>{\raggedright\arraybackslash}Xl@{}}
 \toprule
 & Configurations & Question \\
 \midrule
@@ -356,79 +483,16 @@ total. A run takes 30--40 minutes on one core, so the sweep needs about 300--400
 \end{tabularx}
 \end{table}
 
-\textbf{Evaluation.} Every 250 episodes the greedy policy is scored on 100 fixed episodes, and the best
-snapshot is then tested on 200 unseen episodes. We also test the final policy, since picking the best
-snapshot can hide instability. We report medians with interquartile ranges (IQR) over seeds,
-Holm-corrected Mann--Whitney tests, and Spearman correlations for trends. To locate the saturation
-point we fit $y(B)=y_\infty-(y_\infty-y_0)e^{-B/\beta}$ and report $B_{90}=\beta\ln10$, the budget that
-recovers 90\% of the gain from unlimited communication, with a bootstrap interval over seeds. A random
-team and a hand-coded team serve as reference points.
+\textbf{Evaluation.} Every 250 episodes the greedy policy is scored on 100 fixed episodes; the best
+snapshot and the final policy are then tested on 200 unseen episodes. We report medians with
+interquartile ranges (IQR) over seeds, Holm-corrected Mann--Whitney tests and Spearman correlations
+for trends. For the saturation point we fit $y(B)=y_\infty-(y_\infty-y_0)e^{-B/\beta}$ and report
+$B_{90}=\beta\ln10$, the budget that recovers 90\% of the gain from unlimited communication, with a
+bootstrap interval over seeds. A random team and a hand-coded team serve as reference points.
 
 % =====================================================================
 \section{Results}\label{sec:results}
 % =====================================================================
-
-\subsection{What the development runs taught us}
-
-Before the final design we trained 1\,213 runs across six sweeps and several pilots. For most of that
-time the honest answer to our question was ``communication does not help'': no communicating team
-was significantly better than \cfg{A} (Table~\ref{tab:devgain}), and learned senders with small
-budgets were often significantly \emph{worse}. In \cfg{sweep\_v3}, for example, a learned sender with
-budget 10 lost 24.8 percentage points to \cfg{A} ($p=0.001$, Fig.~\ref{fig:v3}).
-
-One trend held throughout: the benefit of communication grew as the view shrank, from $-3.3$\,pp at
-full view to $+8.0$\,pp at $\rho=0.1$. This suggested that the effect was real but masked. A careful
-review of the code against the saved runs found three causes:
-\begin{itemize}
-\item \textbf{A free channel.} An assist flag in the observation revealed the teammate's touches to
-every team, including \cfg{A}. Clearing it changed \cfg{A}'s action in 64\% of the steps where it was
-set.
-\item \textbf{A credit that could not be negative.} The learned sender was rewarded by the receiver's
-Q-value change, which never penalised a wasted message and was uncorrelated with a message's real
-effect on the outcome.
-\item \textbf{Hidden instability.} 26 of 98 \cfg{sweep\_v4} runs ended training below 50\% goals, but
-only 6 did after best-snapshot selection, so the reported scores looked more stable than training was.
-\end{itemize}
-Fixing these opened the gap. In the pilot at $\rho=0.075$, broadcasting every step reaches 83\% against
-57.5\% for \cfg{A} (Fig.~\ref{fig:pilot}). Strikingly, the rule sender matches 83\% with only 2 messages
-per episode instead of 47, an early hint that a small budget is enough.
-
-\begin{table}[t]
-\centering\small
-\caption{No communication (\cfg{A}) vs.\ the best communicating team across versions (goal rate \%,
-200 unseen episodes). Up to v3: means and Welch tests; later: medians and Mann--Whitney tests.}
-\label{tab:devgain}
-\begin{tabular}{@{}lccccc@{}}
-\toprule
-Version & $\rho$ & \cfg{A} & Best & $\Delta$ & $p$ \\
-\midrule
-assist sweep & 0.15 & 90.6 & 96.2 & $+5.6$ & 0.22 \\
-v3 (10 seeds) & 0.15 & 83.0 & 83.6 & $+0.6$ & 0.90 \\
-v3 (10 seeds) & 0.10 & 63.9 & 71.8 & $+8.0$ & 0.23 \\
-v4 & 0.15 & 96.5 & 98.0 & $+1.5$ & 0.52 \\
-v4 & 0.10 & 91.5 & 95.0 & $+3.5$ & 0.26 \\
-\midrule
-v5 pilot & 0.075 & 57.5 & 83.0 & $+25.5$ & -- \\
-v5 pilot & 0.06 & 26.0 & 71.0 & $+45.0$ & -- \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure*}[t]
-\centering
-\includegraphics[width=0.92\textwidth]{figures/dev/v3_rq1_budget.png}
-\caption{Before the fixes (\cfg{sweep\_v3}, 510 runs, 10 seeds): goal rate against the message budget.
-No sender beats \cfg{A} (dashed), and learned senders at small budgets do worse.}
-\label{fig:v3}
-\end{figure*}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\linewidth]{figures/dev/pilot_learning_curves.png}
-\caption{After the fixes (pilot, $\rho=0.075$, median and IQR of 3 seeds). The every-step broadcast
-learns fastest, and \cfg{A} plateaus near 50\%.}
-\label{fig:pilot}
-\end{figure}
 
 \subsection{Learning and reference teams}
 
@@ -436,7 +500,7 @@ learns fastest, and \cfg{A} plateaus near 50\%.}
 the trained teams beat the random and hand-coded teams? How far apart are the best snapshot and the
 final policy?}
 
-\begin{table}[t]
+\begin{table}[!t]
 \centering\small
 \caption{Goal rate (\%) at $\rho=0.06$: median [IQR] over 10 seeds.}
 \label{tab:main}
@@ -455,27 +519,27 @@ Hand-coded + rule msgs & \pend & -- & \pend \\
 \end{tabular}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure}[!t]
 \centering
-\resultfig{learning_curves.png}{4.2cm}
+\resultfig{learning_curves.png}{3.6cm}
 \caption{Validation goal rate during training at $\rho=0.06$ (median and IQR, 10 seeds).}
 \label{fig:curves}
 \end{figure}
 
 \subsection{RQ1: when do more messages stop helping?}
 
-\todo{Where does each curve flatten, and does the learned sender saturate earlier than the fixed
-schedule? Report $B_{90}$ per sender (Table~\ref{tab:rq1}), the drop when message content is shuffled,
-and when in the episode learned agents send.}
+\todo{Where does each curve in Fig.~\ref{fig:main}a flatten, and does the learned sender saturate
+earlier than the fixed schedule? Report $B_{90}$ per sender (Table~\ref{tab:rq1}), the drop when message
+content is shuffled, and when in the episode learned agents send.}
 
-\begin{table}[t]
+\begin{table}[!t]
 \centering\small
-\caption{Saturation budget per sender: fitted $B_{90}$ [95\% CI] and the smallest tested budget at
-90\% of the gain.}
+\caption{Saturation budget per sender: fitted $B_{90}$ [95\% CI], the smallest tested budget at 90\% of
+the gain, and Spearman's $\rho_s$ against $B$.}
 \label{tab:rq1}
 \begin{tabular}{@{}lccc@{}}
 \toprule
-Sender & $B_{90}$ & Smallest $B$ & Spearman \\
+Sender & $B_{90}$ & Smallest $B$ & $\rho_s$ \\
 \midrule
 Learned (\cfg{L}) & \pend & \pend & \pend \\
 Rule (\cfg{R}) & \pend & \pend & \pend \\
@@ -484,38 +548,25 @@ Fixed (\cfg{F}) & \pend & \pend & \pend \\
 \end{tabular}
 \end{table}
 
-\begin{figure*}[t]
-\centering
-\resultfig[0.92\textwidth]{rq1_budget.png}{5cm}
-\caption{RQ1: goal rate against the message budget for the learned, rule and fixed senders (median
-and IQR over 10 seeds; dashed: \cfg{A}), with fitted saturation curves.}
-\label{fig:rq1}
-\end{figure*}
 
 \subsection{RQ2: delay}
 
 \todo{At which delay does communication stop beating \cfg{A}? Spearman trend against $\delta$.}
 
-\begin{figure}[t]
+\begin{figure}[!t]
 \centering
-\resultfig{rq2_delay.png}{4.2cm}
+\resultfig{rq2_delay.png}{3.6cm}
 \caption{RQ2: goal rate of \cfg{Linf} and \cfg{Rinf} against the delivery delay $\delta$.}
 \label{fig:rq2}
 \end{figure}
 
 \subsection{RQ3: observability}
 
-\todo{Does the gain $\Delta(\rho)$ grow as $\rho$ shrinks (slope against $\log\rho$ with CI)? Does
-$B_{90}$ move between $\rho=0.06$ and $0.1$? Also report the credit ablation (\cfg{L4}, rollout vs.\
-team return).}
+\todo{Does the gain $\Delta(\rho)$ in Fig.~\ref{fig:main}b grow as $\rho$ shrinks (slope against $\log\rho$ with CI), as v3
+suggested? Does $B_{90}$ move between $\rho=0.06$ and $0.1$? Also report the credit ablation
+(\cfg{L4}, rollout vs.\ team return).}
 
-\begin{figure*}[t]
-\centering
-\resultfig[0.92\textwidth]{rq3_observability.png}{5cm}
-\caption{RQ3: goal rate against the view radius $\rho$ (left) and the communication gain
-$\Delta(\rho)$ with 95\% bootstrap CI (right).}
-\label{fig:rq3}
-\end{figure*}
+\FloatBarrier
 
 % =====================================================================
 \section{Limitations and Conclusion}
@@ -526,11 +577,11 @@ the selected one. The rollout credit needs a simulator that can be copied during
 have a fixed content, so we study the timing of communication under a budget, not emergent language.
 There is no opponent, so the results concern coordination between teammates only.
 
-The development history is itself a finding: the value of communication was easy to hide, either by
-leaking teammate information through another channel or by crediting messages with a signal that
-could not penalise waste. With those removed, a hand-coded sender already matches an every-step
-broadcast with a few messages per episode. \todo{One or two sentences on the main sweep's answer to
-RQ1--RQ3.}
+The longest part of this project was making communication \emph{measurable}. Its value was hidden
+first by a task one agent could solve alone, then by a ceiling, by a free channel through the
+observation, and by a credit that could not penalise waste. With those removed, a hand-coded sender
+already matches an every-step broadcast with a few messages per episode. \todo{One or two sentences
+on the main sweep's answer to RQ1--RQ3.}
 
 % =====================================================================
 \section*{Contributions}
@@ -538,7 +589,7 @@ RQ1--RQ3.}
 
 \begin{table}[h]
 \centering\small
-\begin{tabularx}{\linewidth}{@{}lXc@{}}
+\begin{tabularx}{\linewidth}{@{}l>{\raggedright\arraybackslash}Xc@{}}
 \toprule
 Member & Assigned tasks & Done \\
 \midrule
@@ -550,9 +601,8 @@ K.\ V.\ K.\ Reddy & Literature review; report writing and proofreading & \todo{?
 \end{tabularx}
 \end{table}
 
-\textbf{Code.} Code, pilot rules and the training history of every run are at
-\url{https://github.com/AceAryan/marl-rocket}. One run is reproduced with
-\texttt{python -m experiments.train --setting L4 --obs\_frac 0.06}.
+\textbf{Code.} Code, pilot rules and the training history of every run:
+\url{https://github.com/AceAryan/marl-rocket}.
 
 % =====================================================================
 \small

@@ -1,0 +1,51 @@
+Sweep 'smoke': 15 runs, 0 already done, 15 to train on 18 workers
+[1/15 | 19 min] done    A obs=1.0 d=0 seed=1 | R=  98.7 goal=0.96 concede=0.00 | 1110s
+[2/15 | 20 min] done    A obs=1.0 d=0 seed=2 | R= 100.2 goal=0.98 concede=0.00 | 1189s
+[3/15 | 22 min] done    A obs=1.0 d=0 seed=0 | R= 100.3 goal=0.99 concede=0.01 | 1296s
+[4/15 | 22 min] done    A obs=0.15 d=0 seed=2 | R=  92.5 goal=0.90 concede=0.00 | 1347s
+[5/15 | 23 min] done    A obs=0.15 d=0 seed=1 | R=  97.4 goal=0.95 concede=0.00 | 1393s
+[6/15 | 24 min] done    A obs=0.15 d=0 seed=0 | R=  92.6 goal=0.91 concede=0.00 | 1429s
+[7/15 | 33 min] done    B obs=0.15 d=0 seed=0 | R=  98.0 goal=0.96 concede=0.00 | 1955s
+[8/15 | 37 min] done    B obs=1.0 d=0 seed=2 | R= 100.2 goal=0.98 concede=0.00 | 2233s
+[9/15 | 37 min] done    B obs=0.15 d=0 seed=1 | R=  98.2 goal=0.96 concede=0.00 | 2238s
+[10/15 | 41 min] done    B obs=1.0 d=0 seed=0 | R=  93.9 goal=0.92 concede=0.00 | 2433s
+[11/15 | 43 min] done    B obs=0.15 d=0 seed=2 | R=  90.7 goal=0.88 concede=0.01 | 2559s
+[12/15 | 43 min] done    D obs=0.15 d=0 seed=0 | R=  83.5 goal=0.80 concede=0.00 | 2582s
+[13/15 | 43 min] done    D obs=0.15 d=0 seed=1 | R=  84.2 goal=0.81 concede=0.01 | 2605s
+[14/15 | 46 min] done    D obs=0.15 d=0 seed=2 | R=  80.4 goal=0.74 concede=0.00 | 2761s
+[15/15 | 51 min] done    B obs=1.0 d=0 seed=1 | R=  63.7 goal=0.60 concede=0.00 | 3035s
+
+=== FINAL GREEDY EVALUATION (mean over seeds, 95% CI) ===
+  obs delay  set  n |          return |  goal  conc     GD  epLen |   msgs roleSep | silDrop |     vsA      p |            AUC      p
+-------------------------------------------------------------------------------------------------------------------------------------
+  1.0     0    A  3 |   99.7 +/-   2.2 |  0.98  0.00   0.98   49.0 |    0.0   0.114 |     nan |     nan    nan |  80.7 +/-  10.5    nan
+  1.0     0    B  3 |   85.9 +/-  48.5 |  0.83  0.00   0.83   81.3 |  136.8   0.102 |    75.0 |   -13.8  0.345 |  56.9 +/-  24.9  0.039
+ 0.15     0    A  3 |   94.2 +/-   6.9 |  0.92  0.00   0.92   68.3 |    0.0   0.061 |     nan |     nan    nan |  75.7 +/-   5.9    nan
+ 0.15     0    D  3 |   82.7 +/-   5.1 |  0.78  0.00   0.78  108.0 |   36.6   0.092 |    43.7 |   -11.5  0.006 |  49.7 +/-  17.2  0.015
+ 0.15     0    B  3 |   95.6 +/-  10.6 |  0.93  0.00   0.93   65.6 |   74.2   0.108 |    32.8 |     1.5  0.643 |  61.2 +/-  16.9  0.053
+
+Saved checkpoints/sweep_v2\summary.csv
+Saved checkpoints/sweep_v2\results.png
+Saved figures to checkpoints/sweep_v2\figures and tables to checkpoints/sweep_v2\results.md
+Sweep 'pilot': 12 runs, 6 already done, 6 to train on 18 workers
+[1/6 | 13 min] done  F20 obs=0.15 d=0 seed=1 | R=  95.9 goal=0.94 concede=0.00 | 795s
+[2/6 | 17 min] done  F20 obs=0.15 d=0 seed=2 | R=  89.0 goal=0.86 concede=0.00 | 1009s
+[3/6 | 18 min] done  F20 obs=0.15 d=0 seed=0 | R=  87.7 goal=0.84 concede=0.00 | 1098s
+[4/6 | 24 min] done   D5 obs=0.15 d=0 seed=2 | R=  84.9 goal=0.81 concede=0.00 | 1436s
+[5/6 | 24 min] done   D5 obs=0.15 d=0 seed=0 | R=  90.8 goal=0.86 concede=0.00 | 1454s
+[6/6 | 25 min] done   D5 obs=0.15 d=0 seed=1 | R=  73.7 goal=0.69 concede=0.01 | 1520s
+
+=== FINAL GREEDY EVALUATION (mean over seeds, 95% CI) ===
+  obs delay  set  n |          return |  goal  conc     GD  epLen |   msgs roleSep | silDrop |     vsA      p |            AUC      p
+-------------------------------------------------------------------------------------------------------------------------------------
+  1.0     0    A  3 |   99.7 +/-   2.2 |  0.98  0.00   0.98   49.0 |    0.0   0.114 |     nan |     nan    nan |  80.7 +/-  10.5    nan
+  1.0     0    B  3 |   85.9 +/-  48.5 |  0.83  0.00   0.83   81.3 |  136.8   0.102 |    75.0 |   -13.8  0.345 |  56.9 +/-  24.9  0.039
+ 0.15     0    A  3 |   94.2 +/-   6.9 |  0.92  0.00   0.92   68.3 |    0.0   0.061 |     nan |     nan    nan |  75.7 +/-   5.9    nan
+ 0.15     0   D5  3 |   83.1 +/-  21.5 |  0.79  0.00   0.79  101.0 |    9.4   0.082 |    23.8 |   -11.0  0.149 |  58.0 +/-  21.5  0.062
+ 0.15     0    D  3 |   82.7 +/-   5.1 |  0.78  0.00   0.78  108.0 |   36.6   0.092 |    43.7 |   -11.5  0.006 |  49.7 +/-  17.2  0.015
+ 0.15     0    B  3 |   95.6 +/-  10.6 |  0.93  0.00   0.93   65.6 |   74.2   0.108 |    32.8 |     1.5  0.643 |  61.2 +/-  16.9  0.053
+ 0.15     0  F20  3 |   90.9 +/-  11.1 |  0.88  0.00   0.88   79.2 |   15.1   0.102 |    75.1 |    -3.3  0.349 |  56.4 +/-  17.9  0.033
+
+Saved checkpoints/sweep_v2\summary.csv
+Saved checkpoints/sweep_v2\results.png
+Saved figures to checkpoints/sweep_v2\figures and tables to checkpoints/sweep_v2\results.md

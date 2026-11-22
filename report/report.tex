@@ -333,11 +333,11 @@ Main & Nov 19--22 & 580 & Regime fixed by the pilot; 10 seeds & Section~\ref{sec
 
 \begin{figure*}[!t]
 \centering
-\includegraphics[height=1.6in]{figures/dev/v3_rq1_budget.png}\hfill
-\includegraphics[height=1.6in]{figures/dev/v3_rq3_observability.png}
-\caption{Before the fixes (v3, 510 runs, 10 seeds; mean and 95\% CI). Left: no sender beats no
-communication (dashed) at any budget, and the learned sender at small budgets does worse. Right: the
-one consistent trend: communication pays off only when agents see little ($\rho=0.1$).}
+\includegraphics[width=\textwidth]{figures/dev/v3_dev.png}
+\caption{Before the fixes (v3, 510 runs, 10 seeds; mean and 95\% CI). Left and middle: at either view
+radius, no sender reliably beats no communication (dashed, grey band), and the learned sender at small
+budgets does worse. Right: the one consistent trend: communication pays off only when agents see little
+($\rho=0.1$).}
 \label{fig:v3}
 \end{figure*}
 
@@ -537,7 +537,7 @@ senders lose 1--2 points, small but outside the confidence interval. Below $\rho
 rises to $+5.5$, $+18.2$ and $+33.2$ points. Regressed on $\log\rho$, the gain grows by 9.5 points per
 log-unit for \cfg{Linf} (95\% CI 7.9--12.3) and 11.2 for \cfg{Rinf} (6.6--15.7).
 
-\begin{figure}[H]
+\begin{figure}[!t]
 \centering
 \includegraphics[width=\linewidth]{figures/rq3_observability.png}
 \caption{RQ3: goal rate against the view radius (median and IQR). With a wide view all teams score

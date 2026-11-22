@@ -1,0 +1,47 @@
+Sweep 'all': 350 runs, 66 already done, 284 to train on 20 workers
+[1/284 | 21 min] done    A obs=0.075 d=0 seed=7 | R=  72.2 goal=0.70 concede=0.00 | 1253s
+[2/284 | 21 min] done    A obs=0.075 d=0 seed=4 | R=  66.2 goal=0.65 concede=0.01 | 1255s
+[3/284 | 22 min] done    A obs=0.075 d=0 seed=6 | R=  76.4 goal=0.74 concede=0.00 | 1313s
+[4/284 | 22 min] done    A obs=0.075 d=0 seed=3 | R=  80.4 goal=0.79 concede=0.00 | 1332s
+[5/284 | 23 min] done    A obs=0.075 d=0 seed=8 | R=  79.9 goal=0.78 concede=0.00 | 1355s
+[6/284 | 24 min] done    A obs=0.075 d=0 seed=5 | R=  85.6 goal=0.83 concede=0.00 | 1414s
+[7/284 | 26 min] done    A obs=0.075 d=0 seed=9 | R=  89.0 goal=0.87 concede=0.00 | 1535s
+[8/284 | 26 min] done    A obs=0.075 d=0 seed=2 | R=  77.8 goal=0.76 concede=0.00 | 1558s
+[9/284 | 31 min] done   D2 obs=0.075 d=0 seed=2 | R=  76.1 goal=0.74 concede=0.00 | 1867s
+[10/284 | 31 min] done   D2 obs=0.075 d=0 seed=7 | R=  76.7 goal=0.74 concede=0.00 | 1881s
+[11/284 | 33 min] done   D2 obs=0.075 d=0 seed=9 | R=  69.6 goal=0.68 concede=0.00 | 1965s
+[12/284 | 33 min] done   D2 obs=0.075 d=0 seed=0 | R=  69.2 goal=0.67 concede=0.00 | 1988s
+[13/284 | 34 min] done   D2 obs=0.075 d=0 seed=6 | R=  60.3 goal=0.58 concede=0.00 | 2027s
+[14/284 | 34 min] done   D2 obs=0.075 d=0 seed=8 | R=  81.3 goal=0.80 concede=0.00 | 2050s
+[15/284 | 36 min] done   D2 obs=0.075 d=0 seed=1 | R=  77.6 goal=0.76 concede=0.00 | 2139s
+[16/284 | 36 min] done   D5 obs=0.075 d=0 seed=0 | R=  75.1 goal=0.73 concede=0.00 | 2153s
+[17/284 | 38 min] done   D2 obs=0.075 d=0 seed=3 | R=  38.4 goal=0.36 concede=0.00 | 2256s
+[18/284 | 38 min] done   D2 obs=0.075 d=0 seed=4 | R=  46.5 goal=0.45 concede=0.00 | 2271s
+[19/284 | 41 min] done   D2 obs=0.075 d=0 seed=5 | R=  25.6 goal=0.24 concede=0.01 | 2429s
+[20/284 | 42 min] done   D5 obs=0.075 d=0 seed=1 | R=  74.2 goal=0.72 concede=0.00 | 2526s
+[21/284 | 53 min] done   D5 obs=0.075 d=0 seed=2 | R=  87.7 goal=0.86 concede=0.00 | 1924s
+[22/284 | 54 min] done   D5 obs=0.075 d=0 seed=3 | R=  76.7 goal=0.74 concede=0.00 | 1975s
+[23/284 | 54 min] done   D5 obs=0.075 d=0 seed=5 | R=  84.0 goal=0.82 concede=0.00 | 1911s
+[24/284 | 55 min] done   D5 obs=0.075 d=0 seed=4 | R=  82.3 goal=0.81 concede=0.00 | 2013s
+[25/284 | 59 min] done   D5 obs=0.075 d=0 seed=6 | R=  72.6 goal=0.70 concede=0.00 | 2157s
+[26/284 | 60 min] done   D5 obs=0.075 d=0 seed=9 | R=  87.0 goal=0.85 concede=0.00 | 2035s
+[27/284 | 61 min] done  D10 obs=0.075 d=0 seed=1 | R=  77.6 goal=0.76 concede=0.00 | 1778s
+[28/284 | 61 min] done   D5 obs=0.075 d=0 seed=7 | R=  80.4 goal=0.79 concede=0.00 | 2265s
+[29/284 | 61 min] done  D10 obs=0.075 d=0 seed=0 | R=  87.1 goal=0.85 concede=0.00 | 1817s
+[30/284 | 61 min] done  D10 obs=0.075 d=0 seed=3 | R=  84.6 goal=0.82 concede=0.00 | 1699s
+[31/284 | 512 min] done   D5 obs=0.075 d=0 seed=8 | R=  69.2 goal=0.68 concede=0.00 | 29204s
+[32/284 | 513 min] done  D10 obs=0.075 d=0 seed=2 | R=  85.6 goal=0.83 concede=0.00 | 28805s
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "D:\Dev\marl-rocket\experiments\run_all.py", line 140, in <module>
+    run_sweep(
+  File "D:\Dev\marl-rocket\experiments\run_all.py", line 117, in run_sweep
+    print(f"[{k}/{len(jobs)} | {(time.time() - t0) / 60:.0f} min] {fut.result()}", flush=True)
+                                                                   ^^^^^^^^^^^^
+  File "C:\Users\Ace\.pyenv\pyenv-win\versions\3.12.0\Lib\concurrent\futures\_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ace\.pyenv\pyenv-win\versions\3.12.0\Lib\concurrent\futures\_base.py", line 401, in __get_result
+    raise self._exception
+concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.

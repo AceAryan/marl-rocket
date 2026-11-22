@@ -85,6 +85,24 @@ def sender_groups(groups, mode, rho, kind, delay=0):
     return out
 
 
+def regime_groups(groups):
+    """Keep the runs of the main sweep's learner regime and drop its label suffix.
+
+    Regime-wide variants (independent learners, LR decay) are appended to every
+    label ("L4-indep"); the tables and figures look up plain labels ("L4")."""
+    suffix = ("" if C.SHARE else "-indep") + ("-lrdecay" if C.LR_DECAY else "")
+    out = {}
+    for (m, r, d, label), runs in groups.items():
+        if suffix:
+            if not label.endswith(suffix):
+                continue
+            label = label[:-len(suffix)]
+        elif label.endswith("-indep") or label.endswith("-lrdecay"):
+            continue
+        out[(m, r, d, label)] = runs
+    return out
+
+
 def _main_key(groups):
     """(mode, rho) of the budget sweep: from config, else the most populated."""
     if any(k[0] == C.MAIN_MODE and k[1] == C.MAIN_RHO for k in groups):
@@ -125,11 +143,11 @@ def rq1_tables(groups, mode, rho):
     lines, sat = [], {}
     for kind in ("learned", "rule", "fixed"):
         sg = sender_groups(groups, mode, rho, kind)
-        finite = sorted(b for b in sg if b > 0)
-        if not finite:
+        finite = sorted(b for b in sg if 0 < b < INF_BUDGET)
+        if len(finite) < 2:   # a budget curve needs at least two finite budgets
             continue
         base, unl = sg.get(0.0), sg.get(INF_BUDGET)
-        keys = [b for b in finite if b in sg]
+        keys = finite + ([INF_BUDGET] if INF_BUDGET in sg else [])
         pa = [mannwhitney_p(_scores(sg[b]), _scores(base)) if base else np.nan for b in keys]
         pu = [mannwhitney_p(_scores(sg[b]), _scores(unl)) if unl and not np.isinf(b) else np.nan for b in keys]
         adj = holm(pa + pu)
@@ -340,7 +358,7 @@ def fig_budget(plt, groups, mode, rho, sat, refs, out, ylabel):
     ax.set_xticks([_bx(b, inf_x) for b in ticks] + [inf_x], [_budget_label(b) for b in ticks] + ["inf"])
     _style(ax, f"RQ1  Goals vs message budget ({mode}, rho={rho:g})",
            "Messages per agent per episode (log scale; dotted = fitted B90 with 95% CI)", ylabel)
-    ax.legend(frameon=False, fontsize=8.5, loc="lower right")
+    ax.legend(frameon=False, fontsize=8.5, loc="upper left")
     fig.tight_layout()
     fig.savefig(out, dpi=200)
     plt.close(fig)
@@ -480,7 +498,7 @@ def reference_lines(base, mode, rho):
 
 def build_report(base, references=True):
     histories = load_histories(base)
-    groups = group_runs(histories)
+    groups = regime_groups(group_runs(histories))
     if not groups:
         print(f"No finished runs in {base}")
         return

@@ -235,7 +235,8 @@ def bootstrap_saturation(groups, n_boot=1000, seed=0):
         nps.append(np.inf if n is None else n)
 
     def ci(xs):
-        return [float(np.percentile(xs, 2.5)), float(np.percentile(xs, 97.5))]
+        xs = np.sort(np.asarray(xs, np.float64))   # order statistics: inf (no saturation) stays inf
+        return [float(xs[int(0.025 * (len(xs) - 1))]), float(xs[int(np.ceil(0.975 * (len(xs) - 1)))])]
     return {"fit": fit, "b90_ci": ci(fits), "np_b90": np90, "np_b90_ci": ci(nps)}
 
 
